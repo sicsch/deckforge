@@ -113,6 +113,13 @@ def render_preview() -> None:
     elif phase == "deck":
         _render_structure_download_button()
         deck_html = st.session_state["deck_html"] or ""
+        st.download_button(
+            "Deck herunterladen",
+            data=deck_html,
+            file_name="deck.html",
+            mime="text/html",
+            disabled=not deck_html,
+        )
         preview_tab, source_tab = st.tabs(["Vorschau", "Quellcode"])
         with preview_tab:
             st.components.v1.html(deck_html, height=600, scrolling=True)
