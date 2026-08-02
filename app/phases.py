@@ -98,9 +98,12 @@ def render_preview() -> None:
     elif phase == "structure":
         st.markdown(st.session_state["structure_md"] or "")
     elif phase == "deck":
-        st.components.v1.html(
-            st.session_state["deck_html"] or "", height=600, scrolling=True
-        )
+        deck_html = st.session_state["deck_html"] or ""
+        preview_tab, source_tab = st.tabs(["Vorschau", "Quellcode"])
+        with preview_tab:
+            st.components.v1.html(deck_html, height=600, scrolling=True)
+        with source_tab:
+            st.code(deck_html, language="html")
 
 
 def _render_setup_sidebar() -> None:
