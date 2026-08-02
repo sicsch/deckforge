@@ -15,9 +15,10 @@ Aufruf:
     python export_to_pdf.py deck.html deck.pdf --width 1920 --height 1080
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
+
 from playwright.sync_api import sync_playwright
 
 
@@ -53,9 +54,27 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HTML-Deck zu PDF exportieren")
     parser.add_argument("html_path", help="Pfad zur HTML-Datei")
     parser.add_argument("pdf_path", help="Zielpfad der PDF-Datei")
-    parser.add_argument("--width", type=int, default=1920, help="Seitenbreite in px (Default: 1920, entspricht 16:9)")
-    parser.add_argument("--height", type=int, default=1080, help="Seitenhöhe in px (Default: 1080, entspricht 16:9)")
-    parser.add_argument("--portrait", action="store_true", help="Hochformat statt Querformat")
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=1920,
+        help="Seitenbreite in px (Default: 1920, entspricht 16:9)",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=1080,
+        help="Seitenhöhe in px (Default: 1080, entspricht 16:9)",
+    )
+    parser.add_argument(
+        "--portrait", action="store_true", help="Hochformat statt Querformat"
+    )
     args = parser.parse_args()
 
-    export(args.html_path, args.pdf_path, args.width, args.height, landscape=not args.portrait)
+    export(
+        args.html_path,
+        args.pdf_path,
+        args.width,
+        args.height,
+        landscape=not args.portrait,
+    )

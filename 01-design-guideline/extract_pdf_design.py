@@ -11,10 +11,11 @@ Output:
     pdf_design_tokens.json  (im selben Ordner)
 """
 
-import sys
 import json
-import fitz  # PyMuPDF
+import sys
 from collections import Counter
+
+import fitz  # PyMuPDF
 
 
 def rgb_int_to_hex(color_int: int) -> str:
@@ -56,16 +57,12 @@ def extract(pdf_path: str, max_pages: int = 40):
             for d in drawings:
                 fill = d.get("fill")
                 if fill:
-                    hexcol = "#{:02X}{:02X}{:02X}".format(
-                        int(fill[0] * 255), int(fill[1] * 255), int(fill[2] * 255)
-                    )
-                    drawing_colors[hexcol] += 1
+                    r, g, b = (int(c * 255) for c in fill[:3])
+                    drawing_colors[f"#{r:02X}{g:02X}{b:02X}"] += 1
                 stroke = d.get("color")
                 if stroke:
-                    hexcol = "#{:02X}{:02X}{:02X}".format(
-                        int(stroke[0] * 255), int(stroke[1] * 255), int(stroke[2] * 255)
-                    )
-                    drawing_colors[hexcol] += 1
+                    r, g, b = (int(c * 255) for c in stroke[:3])
+                    drawing_colors[f"#{r:02X}{g:02X}{b:02X}"] += 1
         except Exception:
             pass
 
@@ -109,5 +106,6 @@ if __name__ == "__main__":
     print(f"Fertig. Ergebnis geschrieben nach: {out_path}")
     print(f"Analysierte Seiten: {data['pages_analyzed']}")
     print(f"Top 5 Farben (Text): {[c['hex'] for c in data['text_colors_ranked'][:5]]}")
-    print(f"Top 5 Farben (Grafik): {[c['hex'] for c in data['drawing_fill_stroke_colors_ranked'][:5]]}")
+    top_grafik = [c["hex"] for c in data["drawing_fill_stroke_colors_ranked"][:5]]
+    print(f"Top 5 Farben (Grafik): {top_grafik}")
     print(f"Top 5 Fonts: {[c['font'] for c in data['fonts_ranked'][:5]]}")

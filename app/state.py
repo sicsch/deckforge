@@ -23,7 +23,10 @@ DEFAULT_STATE = {
 
 
 def init_state() -> None:
-    """Populate st.session_state with default keys, without overwriting existing values."""
+    """Populate st.session_state with default keys.
+
+    Does not overwrite keys already present.
+    """
     for key, value in DEFAULT_STATE.items():
         if key not in st.session_state:
             st.session_state[key] = value

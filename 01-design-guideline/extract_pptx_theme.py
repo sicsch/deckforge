@@ -11,8 +11,9 @@ Output:
     pptx_design_tokens.json  (im selben Ordner)
 """
 
-import sys
 import json
+import sys
+
 from pptx import Presentation
 from pptx.util import Emu
 
@@ -24,19 +25,19 @@ def emu_to_cm(value):
 
 
 def extract_theme_colors(prs):
-    """Liest die 12 Theme-Farben (Accent1-6, Dark1/2, Light1/2, Hyperlink, FollowedHyperlink)."""
+    """Liest die 12 Theme-Farben (Accent1-6, Dark1/2, Light1/2, Hyperlink,
+    FollowedHyperlink)."""
     colors = {}
     try:
-        # python-pptx legt das Theme-XML des ersten Master ab
+        # python-pptx legt Theme-Farben nicht direkt offen; über den Theme-Part gehen
         master = prs.slide_masters[0]
-        theme_elm = master.element.getroottree().getroot()
-        # Fallback: direkt über das interne XML des Theme-Parts gehen
         theme_part = master.part.part_related_by(
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
         )
         xml = theme_part.blob.decode("utf-8", errors="ignore")
 
         import re
+
         # sucht srgbClr Werte innerhalb der clrScheme
         scheme_match = re.search(r"<a:clrScheme.*?</a:clrScheme>", xml, re.DOTALL)
         if scheme_match:
@@ -48,7 +49,8 @@ def extract_theme_colors(prs):
                 colors[name] = f"#{hexval.upper()}"
             # sysClr (z.B. für dk1/lt1 die windowText/window referenzieren)
             sys_entries = re.findall(
-                r'<a:(\w+)>\s*<a:sysClr val="(\w+)" lastClr="([0-9A-Fa-f]{6})"', scheme_xml
+                r'<a:(\w+)>\s*<a:sysClr val="(\w+)" lastClr="([0-9A-Fa-f]{6})"',
+                scheme_xml,
             )
             for name, sysname, hexval in sys_entries:
                 colors[name] = f"#{hexval.upper()} (sysClr: {sysname})"
@@ -67,8 +69,13 @@ def extract_theme_fonts(prs):
         xml = theme_part.blob.decode("utf-8", errors="ignore")
 
         import re
-        major = re.search(r'<a:majorFont>.*?<a:latin typeface="([^"]+)"', xml, re.DOTALL)
-        minor = re.search(r'<a:minorFont>.*?<a:latin typeface="([^"]+)"', xml, re.DOTALL)
+
+        major = re.search(
+            r'<a:majorFont>.*?<a:latin typeface="([^"]+)"', xml, re.DOTALL
+        )
+        minor = re.search(
+            r'<a:minorFont>.*?<a:latin typeface="([^"]+)"', xml, re.DOTALL
+        )
         fonts["heading_font"] = major.group(1) if major else None
         fonts["body_font"] = minor.group(1) if minor else None
     except Exception as e:
@@ -82,20 +89,24 @@ def extract_layouts(prs):
         for layout in master.slide_layouts:
             placeholders = []
             for ph in layout.placeholders:
-                placeholders.append({
-                    "idx": ph.placeholder_format.idx,
-                    "type": str(ph.placeholder_format.type),
-                    "name": ph.name,
-                    "left_cm": emu_to_cm(ph.left),
-                    "top_cm": emu_to_cm(ph.top),
-                    "width_cm": emu_to_cm(ph.width),
-                    "height_cm": emu_to_cm(ph.height),
-                })
-            layouts.append({
-                "master_index": master_idx,
-                "layout_name": layout.name,
-                "placeholders": placeholders,
-            })
+                placeholders.append(
+                    {
+                        "idx": ph.placeholder_format.idx,
+                        "type": str(ph.placeholder_format.type),
+                        "name": ph.name,
+                        "left_cm": emu_to_cm(ph.left),
+                        "top_cm": emu_to_cm(ph.top),
+                        "width_cm": emu_to_cm(ph.width),
+                        "height_cm": emu_to_cm(ph.height),
+                    }
+                )
+            layouts.append(
+                {
+                    "master_index": master_idx,
+                    "layout_name": layout.name,
+                    "placeholders": placeholders,
+                }
+            )
     return layouts
 
 
@@ -109,7 +120,9 @@ def extract(pptx_path: str):
         "source_file": pptx_path,
         "slide_width_cm": slide_width_cm,
         "slide_height_cm": slide_height_cm,
-        "aspect_ratio": round(prs.slide_width / prs.slide_height, 3) if prs.slide_height else None,
+        "aspect_ratio": (
+            round(prs.slide_width / prs.slide_height, 3) if prs.slide_height else None
+        ),
         "theme_colors": extract_theme_colors(prs),
         "theme_fonts": extract_theme_fonts(prs),
         "layouts": extract_layouts(prs),
