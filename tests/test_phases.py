@@ -36,6 +36,8 @@ def test_guideline_upload_fills_state(monkeypatch):
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "button", lambda *a, **k: False)
+    monkeypatch.setattr(phases.st, "success", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "warning", lambda *a, **k: None)
     monkeypatch.setattr(
         phases.st,
         "file_uploader",
@@ -58,6 +60,8 @@ def test_guideline_reupload_overwrites_previous(monkeypatch):
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "button", lambda *a, **k: False)
+    monkeypatch.setattr(phases.st, "success", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "warning", lambda *a, **k: None)
     monkeypatch.setattr(
         phases.st,
         "file_uploader",
@@ -68,6 +72,54 @@ def test_guideline_reupload_overwrites_previous(monkeypatch):
 
     assert session_state["guideline_md"] == "# New"
     assert session_state["guideline_name"] == "new.md"
+
+
+def test_guideline_with_tokens_and_headings_reports_detection(monkeypatch):
+    guideline = (
+        "# Guideline\n\n"
+        ":root {\n"
+        "  --color-primary: #1A73E8;\n"
+        "  --font-body: \"Example Sans\";\n"
+        "}\n\n"
+        "## Titelfolie\n\n"
+        "### Inhaltsfolie\n"
+    )
+    _fresh_state(
+        monkeypatch, phase="setup", guideline_md=guideline, guideline_name="g.md"
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: False)
+    monkeypatch.setattr(phases.st, "file_uploader", lambda *a, **k: None)
+    warnings = []
+    successes = []
+    monkeypatch.setattr(phases.st, "warning", lambda msg: warnings.append(msg))
+    monkeypatch.setattr(phases.st, "success", lambda msg: successes.append(msg))
+
+    phases.render_sidebar()
+
+    assert not warnings
+    assert any("--color-primary" in msg for msg in successes)
+    assert any("Titelfolie" in msg for msg in successes)
+
+
+def test_unstructured_guideline_triggers_warning_but_does_not_block(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="setup", guideline_md="Nur Fließtext, keine Struktur."
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "file_uploader", lambda *a, **k: None)
+    warnings = []
+    monkeypatch.setattr(phases.st, "warning", lambda msg: warnings.append(msg))
+    monkeypatch.setattr(phases.st, "success", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+
+    phases.render_sidebar()
+
+    assert len(warnings) == 2
+    assert session_state["phase"] == "structure"
 
 
 def test_no_upload_keeps_state_untouched(monkeypatch):

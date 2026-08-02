@@ -1,5 +1,7 @@
 """Phase-dependent rendering and transitions for deckforge's Streamlit app."""
 
+import re
+
 import streamlit as st
 
 PHASES = ("setup", "structure", "deck")
@@ -8,6 +10,23 @@ PHASE_LABELS = {
     "structure": "Struktur",
     "deck": "Deck",
 }
+
+_ROOT_BLOCK_RE = re.compile(r":root\s*\{([^}]*)\}", re.DOTALL)
+_CSS_VAR_RE = re.compile(r"(--[\w-]+)\s*:")
+_HEADING_RE = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
+
+
+def _validate_guideline(markdown: str) -> tuple[list[str], list[str]]:
+    """Heuristic scan (tech-spec risk 11): CSS custom properties inside a
+    `:root { ... }` block, plus H2/H3 headings as slide-type candidates.
+    Informational only — never raises, an unstructured file just yields
+    empty lists.
+    """
+    tokens = []
+    for block in _ROOT_BLOCK_RE.findall(markdown):
+        tokens.extend(_CSS_VAR_RE.findall(block))
+    slide_types = _HEADING_RE.findall(markdown)
+    return tokens, slide_types
 
 
 def render_phase_indicator() -> None:
@@ -54,8 +73,22 @@ def _render_setup_sidebar() -> None:
             f"{st.session_state['guideline_name']} "
             f"({len(st.session_state['guideline_md'])} Zeichen)"
         )
+        tokens, slide_types = _validate_guideline(st.session_state["guideline_md"])
+        if tokens:
+            st.success(f"{len(tokens)} CSS-Tokens erkannt: {', '.join(tokens)}")
+        else:
+            st.warning(
+                "Keine CSS-Tokens gefunden — Ergebnisse könnten vom "
+                "Corporate Design abweichen."
+            )
+        if slide_types:
+            st.success(
+                f"{len(slide_types)} Folientypen erkannt: {', '.join(slide_types)}"
+            )
+        else:
+            st.warning("Keine Folientyp-Überschriften gefunden.")
 
-    st.write("Platzhalter: Formularfelder folgen in #24–#25.")
+    st.write("Platzhalter: Formularfelder folgen in #25.")
     if st.button("Struktur generieren"):
         st.session_state["structure_md"] = (
             "# Platzhalter-Struktur\n\nDummy-Inhalt bis #30."
