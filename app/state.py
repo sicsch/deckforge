@@ -14,6 +14,7 @@ DEFAULT_STATE = {
         "rohinhalte": "",
     },
     "structure_md": None,
+    "structure_version": 0,
     "structure_chat": [],
     "deck_html": None,
     "deck_chat": [],

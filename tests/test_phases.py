@@ -449,6 +449,83 @@ def test_structure_chat_error_keeps_previous_structure(monkeypatch):
     assert any("boom" in msg for msg in errors)
 
 
+def _stub_structure_edit_widgets(monkeypatch, edited_value, save_clicked):
+    """Stub the manual-edit expander/text_area plus the widgets the rest of
+    `_render_structure_sidebar` touches, so only the save button fires."""
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "chat_input", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "chat_message", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "expander", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "text_area", lambda label, value, **k: edited_value)
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases.st, "error", lambda *a, **k: None)
+    monkeypatch.setattr(
+        phases.st,
+        "button",
+        lambda label, **k: (
+            save_clicked if label == "Manuelle Änderung übernehmen" else False
+        ),
+    )
+
+
+def test_manual_structure_edit_updates_structure_and_bumps_version(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="structure", structure_md="# Alt", structure_version=2
+    )
+    _stub_structure_edit_widgets(monkeypatch, "# Manuell bearbeitet", save_clicked=True)
+
+    phases.render_sidebar()
+
+    assert session_state["structure_md"] == "# Manuell bearbeitet"
+    assert session_state["structure_version"] == 3
+
+
+def test_manual_edit_not_saved_without_button_click(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="structure", structure_md="# Alt", structure_version=0
+    )
+    _stub_structure_edit_widgets(monkeypatch, "# Entwurf", save_clicked=False)
+
+    phases.render_sidebar()
+
+    assert session_state["structure_md"] == "# Alt"
+    assert session_state["structure_version"] == 0
+
+
+def test_manual_edit_then_chat_iteration_uses_edited_version(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="structure",
+        structure_md="# Alt",
+        structure_chat=[],
+        structure_version=0,
+    )
+    _stub_structure_edit_widgets(monkeypatch, "# Manuell bearbeitet", save_clicked=True)
+    phases.render_sidebar()
+    assert session_state["structure_md"] == "# Manuell bearbeitet"
+
+    _stub_chat_widgets(monkeypatch, ["Ändere Titel"])
+    monkeypatch.setattr(phases.st, "expander", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "text_area", lambda label, value, **k: value)
+    captured_replacements = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured_replacements.append(replacements)
+        or "PROMPT",
+    )
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(result="# Neue Struktur")
+    )
+
+    phases.render_sidebar()
+
+    assert (
+        captured_replacements[0][phases._STRUCTURE_PLACEHOLDER]
+        == "# Manuell bearbeitet"
+    )
+
+
 def test_deck_back_to_structure(monkeypatch):
     session_state = _fresh_state(monkeypatch, phase="deck", deck_html="<p>x</p>")
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)

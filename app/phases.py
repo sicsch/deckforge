@@ -149,6 +149,7 @@ def _render_setup_sidebar() -> None:
                 st.session_state["error"] = _describe_llm_error(exc)
             else:
                 st.session_state["structure_md"] = structure_md
+                st.session_state["structure_version"] += 1
                 st.session_state["error"] = None
                 st.session_state["phase"] = "structure"
                 st.rerun()
@@ -214,6 +215,7 @@ def _render_structure_sidebar() -> None:
                 st.session_state["error"] = _describe_llm_error(exc)
             else:
                 st.session_state["structure_md"] = structure_md
+                st.session_state["structure_version"] += 1
                 st.session_state["error"] = None
                 st.session_state["structure_chat"].append(
                     {"role": "assistant", "content": "Struktur aktualisiert."}
@@ -222,6 +224,19 @@ def _render_structure_sidebar() -> None:
 
     if st.session_state["error"]:
         st.error(f"Änderung fehlgeschlagen: {st.session_state['error']}")
+
+    with st.expander("Struktur manuell bearbeiten"):
+        edited_md = st.text_area(
+            "Markdown-Quelltext",
+            value=st.session_state["structure_md"] or "",
+            height=300,
+            key=f"structure_editor_{st.session_state['structure_version']}",
+        )
+        if st.button("Manuelle Änderung übernehmen"):
+            st.session_state["structure_md"] = edited_md
+            st.session_state["structure_version"] += 1
+            st.session_state["error"] = None
+            st.rerun()
 
     if st.button("Struktur bestätigen → Deck bauen", type="primary"):
         st.session_state["deck_html"] = "<p>Platzhalter-Deck bis #36.</p>"
