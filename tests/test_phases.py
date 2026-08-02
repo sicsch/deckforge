@@ -1,3 +1,6 @@
+import httpx
+import openai
+
 from app import phases, state
 
 
@@ -90,6 +93,70 @@ def test_structure_generation_error_keeps_setup_phase_and_shows_message(monkeypa
     assert session_state["structure_md"] is None
     assert session_state["error"] == "boom"
     assert any("boom" in msg for msg in errors)
+
+
+def test_timeout_error_shows_understandable_message_not_raw_exception(monkeypatch):
+    session_state = _fresh_state(monkeypatch, phase="setup", setup=_FILLED_SETUP)
+    _stub_generation_widgets(monkeypatch)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    errors = []
+    monkeypatch.setattr(phases.st, "error", lambda msg: errors.append(msg))
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    timeout_exc = openai.APITimeoutError(request=httpx.Request("POST", "https://x"))
+    monkeypatch.setattr(phases, "get_client", lambda: _FakeClient(error=timeout_exc))
+
+    phases.render_sidebar()
+
+    assert session_state["error"] == (
+        "Zeitüberschreitung beim LLM-Aufruf. Bitte erneut versuchen."
+    )
+    assert any("Zeitüberschreitung" in msg for msg in errors)
+
+
+def test_auth_error_shows_understandable_message_not_raw_exception(monkeypatch):
+    session_state = _fresh_state(monkeypatch, phase="setup", setup=_FILLED_SETUP)
+    _stub_generation_widgets(monkeypatch)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    errors = []
+    monkeypatch.setattr(phases.st, "error", lambda msg: errors.append(msg))
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    response = httpx.Response(401, request=httpx.Request("POST", "https://x"))
+    auth_exc = openai.AuthenticationError("nope", response=response, body=None)
+    monkeypatch.setattr(phases, "get_client", lambda: _FakeClient(error=auth_exc))
+
+    phases.render_sidebar()
+
+    assert (
+        session_state["error"]
+        == "Authentifizierung beim LLM-Provider fehlgeschlagen. Bitte erneut versuchen."
+    )
+    assert any("Authentifizierung" in msg for msg in errors)
+
+
+def test_retry_after_error_succeeds_without_reload(monkeypatch):
+    """A second click in the same session (no reload) after a failed call
+    must clear the error and generate the structure normally."""
+    session_state = _fresh_state(monkeypatch, phase="setup", setup=_FILLED_SETUP)
+    _stub_generation_widgets(monkeypatch)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    monkeypatch.setattr(phases.st, "error", lambda *a, **k: None)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(error=RuntimeError("boom"))
+    )
+    phases.render_sidebar()
+    assert session_state["phase"] == "setup"
+    assert session_state["error"] == "boom"
+
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(result="# Struktur nach Retry")
+    )
+    phases.render_sidebar()
+
+    assert session_state["phase"] == "structure"
+    assert session_state["structure_md"] == "# Struktur nach Retry"
+    assert session_state["error"] is None
 
 
 class _FakeUpload:
