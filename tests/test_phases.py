@@ -527,6 +527,120 @@ def test_structure_chat_error_keeps_previous_structure(monkeypatch):
     assert any("boom" in msg for msg in errors)
 
 
+def test_deck_chat_iteration_updates_deck_and_logs_chat(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html="<html>Alt</html>",
+        deck_chat=[],
+        deck_history=[],
+    )
+    _stub_chat_widgets(monkeypatch, ["Abstand unter der Headline zu groß"])
+    captured_replacements = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured_replacements.append((path, replacements))
+        or "PROMPT",
+    )
+    fake_client = _FakeClient(result="<html>Neu</html>")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Neu</html>"
+    assert session_state["error"] is None
+    assert session_state["deck_chat"] == [
+        {"role": "user", "content": "Abstand unter der Headline zu groß"},
+        {"role": "assistant", "content": "Deck aktualisiert."},
+    ]
+    # previous deck snapshot goes into deck_history before being overwritten
+    assert session_state["deck_history"] == ["<html>Alt</html>"]
+    # prompt gets current deck + change request, not full chat history
+    path, replacements = captured_replacements[0]
+    assert path == phases.HTML_DECK_CHAT_PROMPT
+    assert replacements == {
+        phases._DECK_HTML_PLACEHOLDER: "<html>Alt</html>",
+        phases._CHANGE_REQUEST_PLACEHOLDER: "Abstand unter der Headline zu groß",
+    }
+    system_prompt, messages = fake_client.calls[0]
+    assert messages == [
+        {"role": "user", "content": "Abstand unter der Headline zu groß"}
+    ]
+
+
+def test_deck_chat_three_consecutive_iterations_no_context_loss(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html="<html>v1</html>", deck_chat=[]
+    )
+    requests = ["Änderung 1", "Änderung 2", "Änderung 3"]
+    results = iter(["<html>v2</html>", "<html>v3</html>", "<html>v4</html>"])
+    fake_client = _FakeClient()
+    fake_client.complete = lambda system, messages: (
+        fake_client.calls.append((system, messages)) or next(results)
+    )
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    for i, request in enumerate(requests):
+        _stub_chat_widgets(monkeypatch, [request])
+        phases.render_sidebar()
+        assert session_state["error"] is None
+        assert fake_client.calls[i][1] == [{"role": "user", "content": request}]
+
+    assert session_state["deck_html"] == "<html>v4</html>"
+    assert session_state["deck_history"] == [
+        "<html>v1</html>",
+        "<html>v2</html>",
+        "<html>v3</html>",
+    ]
+    assert len(session_state["deck_chat"]) == 6
+
+
+def test_deck_chat_error_keeps_previous_deck_and_history(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html="<html>Stand vor Fehler</html>",
+        deck_chat=[],
+        deck_history=[],
+    )
+    errors = []
+    _stub_chat_widgets(monkeypatch, ["kaputte Änderung"], errors=errors)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(error=RuntimeError("boom"))
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Stand vor Fehler</html>"
+    assert session_state["deck_history"] == []
+    assert session_state["error"] == "boom"
+    assert any("boom" in msg for msg in errors)
+
+
+def test_deck_chat_preserves_print_css_rules(monkeypatch):
+    """Sample check per issue #37: @media print survives a targeted iteration."""
+    original = (
+        "<html><style>@media print { .slide { break-after: page; } }"
+        "</style></html>"
+    )
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html=original, deck_chat=[]
+    )
+    _stub_chat_widgets(monkeypatch, ["Abstand unter der Headline zu groß"])
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    updated = original.replace(
+        "break-after: page;", "break-after: page; margin-top: 0;"
+    )
+    monkeypatch.setattr(phases, "get_client", lambda: _FakeClient(result=updated))
+
+    phases.render_sidebar()
+
+    assert "@media print" in session_state["deck_html"]
+
+
 def _stub_structure_edit_widgets(monkeypatch, edited_value, save_clicked):
     """Stub the manual-edit expander/text_area plus the widgets the rest of
     `_render_structure_sidebar` touches, so only the save button fires."""

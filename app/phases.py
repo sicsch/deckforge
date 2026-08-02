@@ -10,10 +10,12 @@ from prompts.loader import load_prompt
 SLIDE_ARCHITECT_PROMPT = "02-slide-structure/slide_architect_prompt.md"
 STRUCTURE_CHAT_PROMPT = "02-slide-structure/structure_chat_prompt.md"
 HTML_DECK_PROMPT = "03-html-generation/html_deck_prompt.md"
+HTML_DECK_CHAT_PROMPT = "03-html-generation/html_deck_chat_prompt.md"
 _GUIDELINE_PLACEHOLDER = "[HIER Design-Guideline aus Schritt 1 EINFÜGEN]"
 _BRIEFING_PLACEHOLDER = "[HIER Thema/Zielgruppe/Ziel/Wirkung/Inhalte EINFÜGEN]"
 _STRUCTURE_PLACEHOLDER = "[HIER Aktuelle Folienstruktur EINFÜGEN]"
 _CHANGE_REQUEST_PLACEHOLDER = "[HIER Änderungswunsch EINFÜGEN]"
+_DECK_HTML_PLACEHOLDER = "[HIER Aktuelles HTML-Deck EINFÜGEN]"
 _STRUCTURE_BRIEFING_PLACEHOLDER = (
     "[HIER Folienstruktur + HTML-Briefing aus Schritt 2 EINFÜGEN]"
 )
@@ -220,6 +222,23 @@ def _generate_deck_html(structure_md: str, guideline_md: str | None) -> str:
     )
 
 
+def _generate_deck_html_iteration(deck_html: str, change_request: str) -> str:
+    """Fill the deck chat-iteration prompt with the current HTML and run it.
+
+    Only the current `deck_html` and the latest change request go into the
+    prompt — never the full chat history (Kontextfenster-Disziplin, siehe
+    CLAUDE.md).
+    """
+    prompt = load_prompt(
+        HTML_DECK_CHAT_PROMPT,
+        {
+            _DECK_HTML_PLACEHOLDER: deck_html,
+            _CHANGE_REQUEST_PLACEHOLDER: change_request,
+        },
+    )
+    return get_client().complete(prompt, [{"role": "user", "content": change_request}])
+
+
 def _render_structure_sidebar() -> None:
     for message in st.session_state["structure_chat"]:
         with st.chat_message(message["role"]):
@@ -287,7 +306,35 @@ def _render_deck_sidebar() -> None:
                 st.session_state["deck_html"] = deck_html
                 st.session_state["error"] = None
 
-    st.write("Platzhalter: Chat-Iteration, Downloads, Versionshistorie folgen in #36+.")
+    for message in st.session_state["deck_chat"]:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
+    change_request = st.chat_input("Änderungswunsch zum Deck")
+    if change_request:
+        st.session_state["deck_chat"].append(
+            {"role": "user", "content": change_request}
+        )
+        with st.spinner("Deck wird aktualisiert..."):
+            try:
+                deck_html = _generate_deck_html_iteration(
+                    st.session_state["deck_html"], change_request
+                )
+            except Exception as exc:
+                st.session_state["error"] = _describe_llm_error(exc)
+            else:
+                st.session_state["deck_history"].append(st.session_state["deck_html"])
+                st.session_state["deck_html"] = deck_html
+                st.session_state["error"] = None
+                st.session_state["deck_chat"].append(
+                    {"role": "assistant", "content": "Deck aktualisiert."}
+                )
+        st.rerun()
+
+    if st.session_state["error"]:
+        st.error(f"Änderung fehlgeschlagen: {st.session_state['error']}")
+
+    st.write("Platzhalter: Downloads folgen in #36+.")
 
     if st.session_state["confirm_back_to_structure"]:
         st.warning(
