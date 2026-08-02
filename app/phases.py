@@ -5,6 +5,7 @@ from datetime import datetime
 
 import openai
 import streamlit as st
+from export import pdf
 from llm.client import get_client
 from prompts.loader import load_prompt
 
@@ -317,8 +318,42 @@ def _render_structure_sidebar() -> None:
         disabled=not st.session_state["structure_md"],
     ):
         st.session_state["deck_html"] = None
+        st.session_state["deck_pdf"] = None
         st.session_state["phase"] = "deck"
         st.rerun()
+
+
+def _render_pdf_export() -> None:
+    """PDF export via Playwright — optional, see 04-pdf-export/README_4.md.
+
+    Playwright isn't a hard dependency (not every laptop can install it, see
+    tech-spec risk 11), so this shows a hint pointing at the manual
+    browser-print path instead of a button when it's unavailable.
+    """
+    if not pdf.is_playwright_available():
+        st.info(
+            "PDF-Export benötigt lokal installiertes Playwright/Chromium. "
+            "Anleitung für den manuellen Weg über den Browser-Druckdialog: "
+            "`04-pdf-export/README_4.md`."
+        )
+        return
+
+    if st.button("PDF exportieren"):
+        with st.spinner("PDF wird erzeugt..."):
+            try:
+                st.session_state["deck_pdf"] = pdf.export_html_to_pdf(
+                    st.session_state["deck_html"]
+                )
+            except Exception as exc:
+                st.error(f"PDF-Export fehlgeschlagen: {exc}")
+
+    if st.session_state["deck_pdf"]:
+        st.download_button(
+            "PDF herunterladen",
+            data=st.session_state["deck_pdf"],
+            file_name="deck.pdf",
+            mime="application/pdf",
+        )
 
 
 def _render_deck_sidebar() -> None:
@@ -334,6 +369,7 @@ def _render_deck_sidebar() -> None:
                 st.rerun()
             else:
                 st.session_state["deck_html"] = deck_html
+                st.session_state["deck_pdf"] = None
                 st.session_state["error"] = None
 
     for message in st.session_state["deck_chat"]:
@@ -361,6 +397,7 @@ def _render_deck_sidebar() -> None:
                     }
                 )
                 st.session_state["deck_html"] = deck_html
+                st.session_state["deck_pdf"] = None
                 st.session_state["error"] = None
                 st.session_state["deck_chat"].append(
                     {"role": "assistant", "content": "Deck aktualisiert."}
@@ -383,10 +420,11 @@ def _render_deck_sidebar() -> None:
             )
             if st.button("Wiederherstellen"):
                 st.session_state["deck_html"] = history[selected]["html"]
+                st.session_state["deck_pdf"] = None
                 st.session_state["error"] = None
                 st.rerun()
 
-    st.write("Platzhalter: Downloads folgen in #36+.")
+    _render_pdf_export()
 
     if st.session_state["confirm_back_to_structure"]:
         st.warning(
@@ -395,6 +433,7 @@ def _render_deck_sidebar() -> None:
         )
         if st.button("Ja, zurück zur Struktur", type="primary"):
             st.session_state["deck_html"] = None
+            st.session_state["deck_pdf"] = None
             st.session_state["deck_chat"] = []
             st.session_state["deck_history"] = []
             st.session_state["confirm_back_to_structure"] = False
