@@ -8,18 +8,88 @@ def _fresh_state(monkeypatch, **overrides):
     return fake_session_state
 
 
-def test_setup_to_structure_via_dummy_trigger(monkeypatch):
-    session_state = _fresh_state(monkeypatch, phase="setup")
-    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+class _FakeSpinner:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeClient:
+    def __init__(self, result=None, error=None):
+        self._result = result
+        self._error = error
+        self.calls = []
+
+    def complete(self, system, messages):
+        self.calls.append((system, messages))
+        if self._error:
+            raise self._error
+        return self._result
+
+
+_FILLED_SETUP = {
+    "thema": "T",
+    "zielgruppe": "Z",
+    "ziel": "G",
+    "wirkung": "W",
+    "rohinhalte": "R",
+}
+
+
+def _stub_generation_widgets(monkeypatch):
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "subheader", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "file_uploader", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "text_input", lambda label, value, **k: value)
+    monkeypatch.setattr(phases.st, "text_area", lambda label, value, **k: value)
     monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+
+
+def test_setup_to_structure_generates_via_llm(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="setup", guideline_md="# Guideline", setup=_FILLED_SETUP
+    )
+    _stub_generation_widgets(monkeypatch)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    monkeypatch.setattr(phases.st, "error", lambda *a, **k: None)
+    monkeypatch.setattr(
+        phases, "load_prompt", lambda path, replacements: f"PROMPT::{replacements}"
+    )
+    fake_client = _FakeClient(result="# Echte Struktur")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
 
     phases.render_sidebar()
 
     assert session_state["phase"] == "structure"
-    assert session_state["structure_md"]
+    assert session_state["structure_md"] == "# Echte Struktur"
+    assert session_state["error"] is None
+    system_prompt, messages = fake_client.calls[0]
+    assert "# Guideline" in system_prompt
+    assert "Thema: T" in system_prompt
+    assert messages == [{"role": "user", "content": "Erzeuge die Folienarchitektur."}]
+
+
+def test_structure_generation_error_keeps_setup_phase_and_shows_message(monkeypatch):
+    session_state = _fresh_state(monkeypatch, phase="setup", setup=_FILLED_SETUP)
+    _stub_generation_widgets(monkeypatch)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    errors = []
+    monkeypatch.setattr(phases.st, "error", lambda msg: errors.append(msg))
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(error=RuntimeError("boom"))
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["phase"] == "setup"
+    assert session_state["structure_md"] is None
+    assert session_state["error"] == "boom"
+    assert any("boom" in msg for msg in errors)
 
 
 class _FakeUpload:
@@ -105,16 +175,21 @@ def test_guideline_with_tokens_and_headings_reports_detection(monkeypatch):
 
 def test_unstructured_guideline_triggers_warning_but_does_not_block(monkeypatch):
     session_state = _fresh_state(
-        monkeypatch, phase="setup", guideline_md="Nur Fließtext, keine Struktur."
+        monkeypatch,
+        phase="setup",
+        guideline_md="Nur Fließtext, keine Struktur.",
+        setup=_FILLED_SETUP,
     )
-    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
-    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
-    monkeypatch.setattr(phases.st, "file_uploader", lambda *a, **k: None)
+    _stub_generation_widgets(monkeypatch)
     warnings = []
     monkeypatch.setattr(phases.st, "warning", lambda msg: warnings.append(msg))
     monkeypatch.setattr(phases.st, "success", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "error", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
-    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(result="# Struktur")
+    )
 
     phases.render_sidebar()
 
