@@ -91,15 +91,35 @@ def render_sidebar() -> None:
         _render_deck_sidebar()
 
 
+def _render_structure_download_button() -> None:
+    structure_md = st.session_state["structure_md"] or ""
+    st.download_button(
+        "Struktur herunterladen",
+        data=structure_md,
+        file_name="structure.md",
+        mime="text/markdown",
+        disabled=not structure_md,
+    )
+
+
 def render_preview() -> None:
     """Render the preview column for the current phase."""
     phase = st.session_state["phase"]
     if phase == "setup":
         st.write("Noch keine Struktur generiert.")
     elif phase == "structure":
+        _render_structure_download_button()
         st.markdown(st.session_state["structure_md"] or "")
     elif phase == "deck":
+        _render_structure_download_button()
         deck_html = st.session_state["deck_html"] or ""
+        st.download_button(
+            "Deck herunterladen",
+            data=deck_html,
+            file_name="deck.html",
+            mime="text/html",
+            disabled=not deck_html,
+        )
         preview_tab, source_tab = st.tabs(["Vorschau", "Quellcode"])
         with preview_tab:
             st.components.v1.html(deck_html, height=600, scrolling=True)
@@ -117,6 +137,12 @@ def _render_setup_sidebar() -> None:
         st.caption(
             f"{st.session_state['guideline_name']} "
             f"({len(st.session_state['guideline_md'])} Zeichen)"
+        )
+        st.download_button(
+            "Guideline erneut herunterladen",
+            data=st.session_state["guideline_md"].encode("utf-8"),
+            file_name=st.session_state["guideline_name"],
+            mime="text/markdown",
         )
         tokens, slide_types = _validate_guideline(st.session_state["guideline_md"])
         if tokens:
