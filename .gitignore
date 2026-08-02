@@ -9,6 +9,9 @@ pptx_design_tokens.json
 *.potx
 *.ppt
 
+# Secrets
+.env
+
 # Python
 __pycache__/
 *.pyc
