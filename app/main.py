@@ -4,7 +4,7 @@ import streamlit as st
 
 st.set_page_config(page_title="deckforge", layout="wide")
 
-st.info("Phase: **Setup**")
+st.info("**Setup** → Struktur → Deck")  # ponytail: hardcoded phase text, real indicator once phase logic exists (#30+)
 st.caption("LLM-Provider: nicht konfiguriert")
 
 sidebar, preview = st.columns([1, 2])
