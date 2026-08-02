@@ -532,6 +532,7 @@ def test_deck_chat_iteration_updates_deck_and_logs_chat(monkeypatch):
         monkeypatch,
         phase="deck",
         deck_html="<html>Alt</html>",
+        deck_pdf=b"stale-pdf-bytes",
         deck_chat=[],
         deck_history=[],
     )
@@ -549,6 +550,7 @@ def test_deck_chat_iteration_updates_deck_and_logs_chat(monkeypatch):
     phases.render_sidebar()
 
     assert session_state["deck_html"] == "<html>Neu</html>"
+    assert session_state["deck_pdf"] is None  # stale PDF must not survive an edit
     assert session_state["error"] is None
     assert session_state["deck_chat"] == [
         {"role": "user", "content": "Abstand unter der Headline zu groß"},
