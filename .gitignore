@@ -1,0 +1,21 @@
+# Extraktionsergebnisse (können unternehmensspezifische Design-Daten enthalten)
+*_tokens.json
+pdf_design_tokens.json
+pptx_design_tokens.json
+
+# Quelldateien (nicht öffentlich teilen)
+*.pdf
+*.pptx
+*.potx
+*.ppt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+setup_github_issues.sh
