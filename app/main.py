@@ -3,8 +3,11 @@
 import os
 
 import streamlit as st
+from dotenv import load_dotenv
 from phases import render_phase_indicator, render_preview, render_sidebar
 from state import init_state
+
+load_dotenv()
 
 st.set_page_config(page_title="deckforge", layout="wide")
 
