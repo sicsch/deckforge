@@ -15,8 +15,8 @@ def get_client() -> LLMClient:
         from app.llm.azure import AzureOpenAIClient
 
         return AzureOpenAIClient()
-    elif provider == "anthropic":
-        from app.llm.anthropic import AnthropicClient
+    elif provider == "openrouter":
+        from app.llm.openrouter import OpenRouterClient
 
-        return AnthropicClient()
+        return OpenRouterClient()
     raise ValueError(f"Unbekannter Provider: {provider}")

@@ -24,13 +24,14 @@ def test_get_client_dispatches_to_azure(monkeypatch):
     assert isinstance(get_client(), AzureOpenAIClient)
 
 
-def test_get_client_dispatches_to_anthropic(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+def test_get_client_dispatches_to_openrouter(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/example-model")
 
-    from app.llm.anthropic import AnthropicClient
+    from app.llm.openrouter import OpenRouterClient
 
-    assert isinstance(get_client(), AnthropicClient)
+    assert isinstance(get_client(), OpenRouterClient)
 
 
 def test_get_client_defaults_to_azure_when_unset(monkeypatch):
