@@ -238,7 +238,11 @@ def _render_structure_sidebar() -> None:
             st.session_state["error"] = None
             st.rerun()
 
-    if st.button("Struktur bestätigen → Deck bauen", type="primary"):
+    if st.button(
+        "Struktur bestätigen → Deck bauen",
+        type="primary",
+        disabled=not st.session_state["structure_md"],
+    ):
         st.session_state["deck_html"] = "<p>Platzhalter-Deck bis #36.</p>"
         st.session_state["phase"] = "deck"
         st.rerun()
