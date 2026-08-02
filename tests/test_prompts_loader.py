@@ -1,0 +1,43 @@
+import pytest
+
+from app.prompts.loader import load_prompt
+
+SLIDE_ARCHITECT = "02-slide-structure/slide_architect_prompt.md"
+HTML_DECK = "03-html-generation/html_deck_prompt.md"
+
+
+def test_loads_slide_architect_prompt_from_file():
+    prompt = load_prompt(
+        SLIDE_ARCHITECT,
+        {
+            "[HIER Design-Guideline aus Schritt 1 EINFÜGEN]": "GUIDELINE",
+            "[HIER Thema/Zielgruppe/Ziel/Wirkung/Inhalte EINFÜGEN]": "BRIEFING",
+        },
+    )
+    assert "GUIDELINE" in prompt
+    assert "BRIEFING" in prompt
+    assert "[HIER" not in prompt
+    assert "## Prompt" not in prompt  # only the fenced block is returned
+
+
+def test_loads_html_deck_prompt_from_file():
+    prompt = load_prompt(
+        HTML_DECK,
+        {
+            "[HIER Design-Guideline aus Schritt 1 EINFÜGEN]": "GUIDELINE",
+            "[HIER Folienstruktur + HTML-Briefing aus Schritt 2 EINFÜGEN]": "STRUCTURE",
+        },
+    )
+    assert "GUIDELINE" in prompt
+    assert "STRUCTURE" in prompt
+    assert "[HIER" not in prompt
+
+
+def test_missing_placeholder_raises_clear_error():
+    with pytest.raises(ValueError, match="Unresolved placeholder"):
+        load_prompt(SLIDE_ARCHITECT, {})
+
+
+def test_missing_file_raises():
+    with pytest.raises(FileNotFoundError):
+        load_prompt("does/not/exist.md", {})
