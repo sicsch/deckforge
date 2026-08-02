@@ -44,7 +44,18 @@ def render_preview() -> None:
 
 
 def _render_setup_sidebar() -> None:
-    st.write("Platzhalter: Guideline-Upload und Formularfelder folgen in #23–#25.")
+    uploaded = st.file_uploader("Design-Guideline (Markdown)", type=["md"])
+    if uploaded is not None:
+        st.session_state["guideline_md"] = uploaded.getvalue().decode("utf-8")
+        st.session_state["guideline_name"] = uploaded.name
+
+    if st.session_state["guideline_md"]:
+        st.caption(
+            f"{st.session_state['guideline_name']} "
+            f"({len(st.session_state['guideline_md'])} Zeichen)"
+        )
+
+    st.write("Platzhalter: Formularfelder folgen in #24–#25.")
     if st.button("Struktur generieren"):
         st.session_state["structure_md"] = (
             "# Platzhalter-Struktur\n\nDummy-Inhalt bis #30."
