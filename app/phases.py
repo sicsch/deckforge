@@ -2,6 +2,7 @@
 
 import re
 
+import openai
 import streamlit as st
 from llm.client import get_client
 from prompts.loader import load_prompt
@@ -9,6 +10,25 @@ from prompts.loader import load_prompt
 SLIDE_ARCHITECT_PROMPT = "02-slide-structure/slide_architect_prompt.md"
 _GUIDELINE_PLACEHOLDER = "[HIER Design-Guideline aus Schritt 1 EINFÜGEN]"
 _BRIEFING_PLACEHOLDER = "[HIER Thema/Zielgruppe/Ziel/Wirkung/Inhalte EINFÜGEN]"
+
+_LLM_ERROR_MESSAGES = (
+    (openai.APITimeoutError, "Zeitüberschreitung beim LLM-Aufruf."),
+    (openai.AuthenticationError, "Authentifizierung beim LLM-Provider fehlgeschlagen."),
+    (openai.RateLimitError, "Rate Limit beim LLM-Provider erreicht."),
+)
+
+
+def _describe_llm_error(exc: Exception) -> str:
+    """Map known transient/auth failures to an understandable German message.
+
+    Falls back to str(exc) for anything else — never a raw stacktrace, but
+    also never invented text for errors we don't recognize.
+    """
+    for exc_type, message in _LLM_ERROR_MESSAGES:
+        if isinstance(exc, exc_type):
+            return f"{message} Bitte erneut versuchen."
+    return str(exc)
+
 
 PHASES = ("setup", "structure", "deck")
 PHASE_LABELS = {
@@ -123,7 +143,7 @@ def _render_setup_sidebar() -> None:
                     setup, st.session_state["guideline_md"]
                 )
             except Exception as exc:
-                st.session_state["error"] = str(exc)
+                st.session_state["error"] = _describe_llm_error(exc)
             else:
                 st.session_state["structure_md"] = structure_md
                 st.session_state["error"] = None
