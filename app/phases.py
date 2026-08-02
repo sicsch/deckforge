@@ -1,6 +1,7 @@
 """Phase-dependent rendering and transitions for deckforge's Streamlit app."""
 
 import re
+from datetime import datetime
 
 import openai
 import streamlit as st
@@ -326,7 +327,13 @@ def _render_deck_sidebar() -> None:
             except Exception as exc:
                 st.session_state["error"] = _describe_llm_error(exc)
             else:
-                st.session_state["deck_history"].append(st.session_state["deck_html"])
+                st.session_state["deck_history"].append(
+                    {
+                        "label": change_request[:60],
+                        "html": st.session_state["deck_html"],
+                        "timestamp": datetime.now().isoformat(timespec="seconds"),
+                    }
+                )
                 st.session_state["deck_html"] = deck_html
                 st.session_state["error"] = None
                 st.session_state["deck_chat"].append(
@@ -336,6 +343,22 @@ def _render_deck_sidebar() -> None:
 
     if st.session_state["error"]:
         st.error(f"Änderung fehlgeschlagen: {st.session_state['error']}")
+
+    if st.session_state["deck_history"]:
+        with st.expander("Versionshistorie"):
+            history = st.session_state["deck_history"]
+            selected = st.selectbox(
+                "Früherer Stand",
+                range(len(history)),
+                format_func=lambda i: (
+                    f"{history[i]['timestamp']} — {history[i]['label']}"
+                ),
+                index=len(history) - 1,
+            )
+            if st.button("Wiederherstellen"):
+                st.session_state["deck_html"] = history[selected]["html"]
+                st.session_state["error"] = None
+                st.rerun()
 
     st.write("Platzhalter: Downloads folgen in #36+.")
 

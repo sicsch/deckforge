@@ -555,7 +555,11 @@ def test_deck_chat_iteration_updates_deck_and_logs_chat(monkeypatch):
         {"role": "assistant", "content": "Deck aktualisiert."},
     ]
     # previous deck snapshot goes into deck_history before being overwritten
-    assert session_state["deck_history"] == ["<html>Alt</html>"]
+    assert len(session_state["deck_history"]) == 1
+    snapshot = session_state["deck_history"][0]
+    assert snapshot["html"] == "<html>Alt</html>"
+    assert snapshot["label"] == "Abstand unter der Headline zu groß"
+    assert snapshot["timestamp"]
     # prompt gets current deck + change request, not full chat history
     path, replacements = captured_replacements[0]
     assert path == phases.HTML_DECK_CHAT_PROMPT
@@ -589,12 +593,38 @@ def test_deck_chat_three_consecutive_iterations_no_context_loss(monkeypatch):
         assert fake_client.calls[i][1] == [{"role": "user", "content": request}]
 
     assert session_state["deck_html"] == "<html>v4</html>"
-    assert session_state["deck_history"] == [
+    assert [snap["html"] for snap in session_state["deck_history"]] == [
         "<html>v1</html>",
         "<html>v2</html>",
         "<html>v3</html>",
     ]
     assert len(session_state["deck_chat"]) == 6
+
+
+def test_deck_history_restore_replaces_deck_html(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html="<html>v3</html>",
+        deck_chat=[],
+        deck_history=[
+            {"label": "Änderung 1", "html": "<html>v1</html>", "timestamp": "t1"},
+            {"label": "Änderung 2", "html": "<html>v2</html>", "timestamp": "t2"},
+        ],
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "chat_input", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases.st, "error", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "selectbox", lambda *a, **k: 0)
+    monkeypatch.setattr(
+        phases.st, "button", lambda label, **k: label == "Wiederherstellen"
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>v1</html>"
 
 
 def test_deck_chat_error_keeps_previous_deck_and_history(monkeypatch):
@@ -718,9 +748,12 @@ def test_manual_edit_then_chat_iteration_uses_edited_version(monkeypatch):
     )
 
 
+_HISTORY_ENTRY = {"label": "v1", "html": "<p>x</p>", "timestamp": "2026-01-01T00:00:00"}
+
+
 def test_deck_back_button_only_shows_warning_first(monkeypatch):
     session_state = _fresh_state(
-        monkeypatch, phase="deck", deck_html="<p>x</p>", deck_history=["v1"]
+        monkeypatch, phase="deck", deck_html="<p>x</p>", deck_history=[_HISTORY_ENTRY]
     )
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
@@ -740,7 +773,7 @@ def test_deck_back_to_structure_after_confirm_clears_deck_state(monkeypatch):
         phase="deck",
         deck_html="<p>x</p>",
         deck_chat=[{"role": "user", "content": "x"}],
-        deck_history=["v1"],
+        deck_history=[_HISTORY_ENTRY],
         confirm_back_to_structure=True,
     )
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
@@ -766,7 +799,7 @@ def test_deck_back_to_structure_cancel_keeps_deck_state(monkeypatch):
         monkeypatch,
         phase="deck",
         deck_html="<p>x</p>",
-        deck_history=["v1"],
+        deck_history=[_HISTORY_ENTRY],
         confirm_back_to_structure=True,
     )
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
@@ -781,7 +814,7 @@ def test_deck_back_to_structure_cancel_keeps_deck_state(monkeypatch):
     assert session_state["phase"] == "deck"
     assert session_state["confirm_back_to_structure"] is False
     assert session_state["deck_html"] == "<p>x</p>"
-    assert session_state["deck_history"] == ["v1"]
+    assert session_state["deck_history"] == [_HISTORY_ENTRY]
 
 
 def test_phase_indicator_renders_no_widget(monkeypatch):
