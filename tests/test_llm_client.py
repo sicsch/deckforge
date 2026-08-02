@@ -16,7 +16,6 @@ def _stub_azure_credential(monkeypatch):
 def test_get_client_dispatches_to_azure(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "azure")
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
-    monkeypatch.setenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
 
     from app.llm.azure import AzureOpenAIClient
@@ -37,7 +36,6 @@ def test_get_client_dispatches_to_openrouter(monkeypatch):
 def test_get_client_defaults_to_azure_when_unset(monkeypatch):
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
-    monkeypatch.setenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
 
     from app.llm.azure import AzureOpenAIClient

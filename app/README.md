@@ -31,8 +31,7 @@ Umgebungsvariable `LLM_PROVIDER` in `.env` — kein Codeänderung nötig.
 
 - **`azure`** (Standard, Firmenumgebung): Authentifizierung über
   `DefaultAzureCredential`, kein API-Key in `.env`. Benötigt
-  `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`,
-  `AZURE_OPENAI_API_VERSION`.
+  `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`.
 - **`openrouter`** (Alternative, z. B. private Entwicklung): benötigt
   `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`.
 
