@@ -8,8 +8,11 @@ from llm.client import get_client
 from prompts.loader import load_prompt
 
 SLIDE_ARCHITECT_PROMPT = "02-slide-structure/slide_architect_prompt.md"
+STRUCTURE_CHAT_PROMPT = "02-slide-structure/structure_chat_prompt.md"
 _GUIDELINE_PLACEHOLDER = "[HIER Design-Guideline aus Schritt 1 EINFÜGEN]"
 _BRIEFING_PLACEHOLDER = "[HIER Thema/Zielgruppe/Ziel/Wirkung/Inhalte EINFÜGEN]"
+_STRUCTURE_PLACEHOLDER = "[HIER Aktuelle Folienstruktur EINFÜGEN]"
+_CHANGE_REQUEST_PLACEHOLDER = "[HIER Änderungswunsch EINFÜGEN]"
 
 _LLM_ERROR_MESSAGES = (
     (openai.APITimeoutError, "Zeitüberschreitung beim LLM-Aufruf."),
@@ -175,8 +178,51 @@ def _generate_structure(setup: dict, guideline_md: str | None) -> str:
     )
 
 
+def _generate_structure_iteration(structure_md: str, change_request: str) -> str:
+    """Fill the chat-iteration prompt with the current structure and run it.
+
+    Only the current `structure_md` and the latest change request go into the
+    prompt — never the full chat history (Kontextfenster-Disziplin, siehe
+    CLAUDE.md).
+    """
+    prompt = load_prompt(
+        STRUCTURE_CHAT_PROMPT,
+        {
+            _STRUCTURE_PLACEHOLDER: structure_md,
+            _CHANGE_REQUEST_PLACEHOLDER: change_request,
+        },
+    )
+    return get_client().complete(prompt, [{"role": "user", "content": change_request}])
+
+
 def _render_structure_sidebar() -> None:
-    st.write("Platzhalter: Chat-Iteration folgt in #32.")
+    for message in st.session_state["structure_chat"]:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
+    change_request = st.chat_input("Änderungswunsch zur Struktur")
+    if change_request:
+        st.session_state["structure_chat"].append(
+            {"role": "user", "content": change_request}
+        )
+        with st.spinner("Struktur wird aktualisiert..."):
+            try:
+                structure_md = _generate_structure_iteration(
+                    st.session_state["structure_md"], change_request
+                )
+            except Exception as exc:
+                st.session_state["error"] = _describe_llm_error(exc)
+            else:
+                st.session_state["structure_md"] = structure_md
+                st.session_state["error"] = None
+                st.session_state["structure_chat"].append(
+                    {"role": "assistant", "content": "Struktur aktualisiert."}
+                )
+        st.rerun()
+
+    if st.session_state["error"]:
+        st.error(f"Änderung fehlgeschlagen: {st.session_state['error']}")
+
     if st.button("Struktur bestätigen → Deck bauen", type="primary"):
         st.session_state["deck_html"] = "<p>Platzhalter-Deck bis #36.</p>"
         st.session_state["phase"] = "deck"

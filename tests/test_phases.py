@@ -350,6 +350,105 @@ def test_structure_to_deck_only_after_confirm_click(monkeypatch):
     assert session_state["deck_html"]
 
 
+def _stub_chat_widgets(monkeypatch, chat_inputs, errors=None):
+    """Stub chat_input to return each value from `chat_inputs` in turn (None
+    after exhaustion), plus the other widgets `_render_structure_sidebar`
+    touches."""
+    inputs = iter(chat_inputs)
+    monkeypatch.setattr(
+        phases.st, "chat_input", lambda *a, **k: next(inputs, None)
+    )
+    monkeypatch.setattr(phases.st, "chat_message", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: False)
+    if errors is not None:
+        monkeypatch.setattr(phases.st, "error", lambda msg: errors.append(msg))
+    else:
+        monkeypatch.setattr(phases.st, "error", lambda *a, **k: None)
+
+
+def test_structure_chat_iteration_updates_structure_and_logs_chat(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="structure",
+        structure_md="# Alte Struktur",
+        structure_chat=[],
+    )
+    _stub_chat_widgets(monkeypatch, ["Ändere Folie 3"])
+    captured_replacements = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured_replacements.append(replacements)
+        or "PROMPT",
+    )
+    fake_client = _FakeClient(result="# Neue Struktur")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    phases.render_sidebar()
+
+    assert session_state["structure_md"] == "# Neue Struktur"
+    assert session_state["error"] is None
+    assert session_state["structure_chat"] == [
+        {"role": "user", "content": "Ändere Folie 3"},
+        {"role": "assistant", "content": "Struktur aktualisiert."},
+    ]
+    # prompt gets current structure + change request, not full chat history
+    assert captured_replacements[0] == {
+        phases._STRUCTURE_PLACEHOLDER: "# Alte Struktur",
+        phases._CHANGE_REQUEST_PLACEHOLDER: "Ändere Folie 3",
+    }
+    system_prompt, messages = fake_client.calls[0]
+    assert messages == [{"role": "user", "content": "Ändere Folie 3"}]
+
+
+def test_structure_chat_three_consecutive_iterations_no_context_loss(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="structure", structure_md="# v1", structure_chat=[]
+    )
+    requests = ["Änderung 1", "Änderung 2", "Änderung 3"]
+    results = iter(["# v2", "# v3", "# v4"])
+    fake_client = _FakeClient()
+    fake_client.complete = lambda system, messages: (
+        fake_client.calls.append((system, messages)) or next(results)
+    )
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    for i, request in enumerate(requests):
+        _stub_chat_widgets(monkeypatch, [request])
+        phases.render_sidebar()
+        assert session_state["error"] is None
+        # each call's message list holds only the latest request, never prior ones
+        assert fake_client.calls[i][1] == [{"role": "user", "content": request}]
+
+    assert session_state["structure_md"] == "# v4"
+    assert len(session_state["structure_chat"]) == 6
+
+
+def test_structure_chat_error_keeps_previous_structure(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="structure",
+        structure_md="# Stand vor Fehler",
+        structure_chat=[],
+    )
+    errors = []
+    _stub_chat_widgets(monkeypatch, ["kaputte Änderung"], errors=errors)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(error=RuntimeError("boom"))
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["structure_md"] == "# Stand vor Fehler"
+    assert session_state["error"] == "boom"
+    assert any("boom" in msg for msg in errors)
+
+
 def test_deck_back_to_structure(monkeypatch):
     session_state = _fresh_state(monkeypatch, phase="deck", deck_html="<p>x</p>")
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
