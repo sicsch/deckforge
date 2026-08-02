@@ -118,6 +118,12 @@ def _render_setup_sidebar() -> None:
             f"{st.session_state['guideline_name']} "
             f"({len(st.session_state['guideline_md'])} Zeichen)"
         )
+        st.download_button(
+            "Guideline erneut herunterladen",
+            data=st.session_state["guideline_md"].encode("utf-8"),
+            file_name=st.session_state["guideline_name"],
+            mime="text/markdown",
+        )
         tokens, slide_types = _validate_guideline(st.session_state["guideline_md"])
         if tokens:
             st.success(f"{len(tokens)} CSS-Tokens erkannt: {', '.join(tokens)}")
