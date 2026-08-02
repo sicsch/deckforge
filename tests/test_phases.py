@@ -336,7 +336,9 @@ def test_setup_form_enables_button_once_required_fields_filled(monkeypatch):
 
 
 def test_structure_to_deck_only_after_confirm_click(monkeypatch):
-    session_state = _fresh_state(monkeypatch, phase="structure")
+    session_state = _fresh_state(
+        monkeypatch, phase="structure", deck_html="<p>Alter Stand</p>"
+    )
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "rerun", lambda: None)
 
@@ -347,7 +349,83 @@ def test_structure_to_deck_only_after_confirm_click(monkeypatch):
     monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
     phases.render_sidebar()
     assert session_state["phase"] == "deck"
-    assert session_state["deck_html"]
+    # generation itself happens on the next render of the deck phase, not here
+    assert session_state["deck_html"] is None
+
+
+def test_deck_phase_auto_generates_html_on_first_render(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html=None,
+        structure_md="# Struktur",
+        guideline_md="# Guideline",
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    captured_replacements = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured_replacements.append((path, replacements))
+        or "PROMPT",
+    )
+    fake_client = _FakeClient(result="<html>Deck</html>")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Deck</html>"
+    assert session_state["error"] is None
+    assert session_state["phase"] == "deck"
+    path, replacements = captured_replacements[0]
+    assert path == phases.HTML_DECK_PROMPT
+    assert replacements == {
+        phases._GUIDELINE_PLACEHOLDER: "# Guideline",
+        phases._STRUCTURE_BRIEFING_PLACEHOLDER: "# Struktur",
+    }
+    system_prompt, messages = fake_client.calls[0]
+    assert system_prompt == "PROMPT"
+    assert messages == [
+        {"role": "user", "content": phases._HTML_GENERATION_INSTRUCTION}
+    ]
+
+
+def test_deck_html_not_regenerated_once_present(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html="<html>Schon da</html>"
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    fake_client = _FakeClient(result="<html>Neu</html>")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Schon da</html>"
+    assert fake_client.calls == []
+
+
+def test_deck_generation_error_reverts_to_structure_phase(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html=None, structure_md="# Struktur"
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(error=RuntimeError("boom"))
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["phase"] == "structure"
+    assert session_state["deck_html"] is None
+    assert session_state["error"] == "boom"
 
 
 def _stub_chat_widgets(monkeypatch, chat_inputs, errors=None):

@@ -9,10 +9,20 @@ from prompts.loader import load_prompt
 
 SLIDE_ARCHITECT_PROMPT = "02-slide-structure/slide_architect_prompt.md"
 STRUCTURE_CHAT_PROMPT = "02-slide-structure/structure_chat_prompt.md"
+HTML_DECK_PROMPT = "03-html-generation/html_deck_prompt.md"
 _GUIDELINE_PLACEHOLDER = "[HIER Design-Guideline aus Schritt 1 EINFÜGEN]"
 _BRIEFING_PLACEHOLDER = "[HIER Thema/Zielgruppe/Ziel/Wirkung/Inhalte EINFÜGEN]"
 _STRUCTURE_PLACEHOLDER = "[HIER Aktuelle Folienstruktur EINFÜGEN]"
 _CHANGE_REQUEST_PLACEHOLDER = "[HIER Änderungswunsch EINFÜGEN]"
+_STRUCTURE_BRIEFING_PLACEHOLDER = (
+    "[HIER Folienstruktur + HTML-Briefing aus Schritt 2 EINFÜGEN]"
+)
+_HTML_GENERATION_INSTRUCTION = (
+    "Erzeuge das vollständige HTML-Deck. Führe Preflight-Plan und Code-Phase "
+    "direkt nacheinander aus, ohne auf eine Bestätigung zu warten. Gib "
+    "ausschließlich das vollständige, in sich valide HTML-Dokument zurück — "
+    "keinen Preflight-Plan, keine Erklärungen."
+)
 
 _LLM_ERROR_MESSAGES = (
     (openai.APITimeoutError, "Zeitüberschreitung beim LLM-Aufruf."),
@@ -196,6 +206,20 @@ def _generate_structure_iteration(structure_md: str, change_request: str) -> str
     return get_client().complete(prompt, [{"role": "user", "content": change_request}])
 
 
+def _generate_deck_html(structure_md: str, guideline_md: str | None) -> str:
+    """Fill the HTML-deck prompt with guideline + confirmed structure and run it."""
+    prompt = load_prompt(
+        HTML_DECK_PROMPT,
+        {
+            _GUIDELINE_PLACEHOLDER: guideline_md or "",
+            _STRUCTURE_BRIEFING_PLACEHOLDER: structure_md,
+        },
+    )
+    return get_client().complete(
+        prompt, [{"role": "user", "content": _HTML_GENERATION_INSTRUCTION}]
+    )
+
+
 def _render_structure_sidebar() -> None:
     for message in st.session_state["structure_chat"]:
         with st.chat_message(message["role"]):
@@ -243,12 +267,26 @@ def _render_structure_sidebar() -> None:
         type="primary",
         disabled=not st.session_state["structure_md"],
     ):
-        st.session_state["deck_html"] = "<p>Platzhalter-Deck bis #36.</p>"
+        st.session_state["deck_html"] = None
         st.session_state["phase"] = "deck"
         st.rerun()
 
 
 def _render_deck_sidebar() -> None:
+    if st.session_state["deck_html"] is None:
+        with st.spinner("Deck wird generiert..."):
+            try:
+                deck_html = _generate_deck_html(
+                    st.session_state["structure_md"], st.session_state["guideline_md"]
+                )
+            except Exception as exc:
+                st.session_state["error"] = _describe_llm_error(exc)
+                st.session_state["phase"] = "structure"
+                st.rerun()
+            else:
+                st.session_state["deck_html"] = deck_html
+                st.session_state["error"] = None
+
     st.write("Platzhalter: Chat-Iteration, Downloads, Versionshistorie folgen in #36+.")
 
     if st.session_state["confirm_back_to_structure"]:
