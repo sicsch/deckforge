@@ -12,11 +12,11 @@ def get_client() -> LLMClient:
     """Return the LLMClient implementation selected via LLM_PROVIDER."""
     provider = os.getenv("LLM_PROVIDER", "azure")
     if provider == "azure":
-        from app.llm.azure import AzureOpenAIClient
+        from .azure import AzureOpenAIClient
 
         return AzureOpenAIClient()
     elif provider == "openrouter":
-        from app.llm.openrouter import OpenRouterClient
+        from .openrouter import OpenRouterClient
 
         return OpenRouterClient()
     raise ValueError(f"Unbekannter Provider: {provider}")

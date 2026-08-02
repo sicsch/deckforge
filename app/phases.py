@@ -3,6 +3,12 @@
 import re
 
 import streamlit as st
+from llm.client import get_client
+from prompts.loader import load_prompt
+
+SLIDE_ARCHITECT_PROMPT = "02-slide-structure/slide_architect_prompt.md"
+_GUIDELINE_PLACEHOLDER = "[HIER Design-Guideline aus Schritt 1 EINFÜGEN]"
+_BRIEFING_PLACEHOLDER = "[HIER Thema/Zielgruppe/Ziel/Wirkung/Inhalte EINFÜGEN]"
 
 PHASES = ("setup", "structure", "deck")
 PHASE_LABELS = {
@@ -111,11 +117,42 @@ def _render_setup_sidebar() -> None:
         st.caption("Thema, Zielgruppe, Ziel und Wirkung sind Pflichtfelder.")
 
     if st.button("Struktur generieren", disabled=not required_filled):
-        st.session_state["structure_md"] = (
-            "# Platzhalter-Struktur\n\nDummy-Inhalt bis #30."
-        )
-        st.session_state["phase"] = "structure"
-        st.rerun()
+        with st.spinner("Struktur wird generiert..."):
+            try:
+                structure_md = _generate_structure(
+                    setup, st.session_state["guideline_md"]
+                )
+            except Exception as exc:
+                st.session_state["error"] = str(exc)
+            else:
+                st.session_state["structure_md"] = structure_md
+                st.session_state["error"] = None
+                st.session_state["phase"] = "structure"
+                st.rerun()
+
+    if st.session_state["error"]:
+        st.error(f"Strukturgenerierung fehlgeschlagen: {st.session_state['error']}")
+
+
+def _generate_structure(setup: dict, guideline_md: str | None) -> str:
+    """Fill the slide-architect prompt template and run it via the LLM client."""
+    briefing = (
+        f"Thema: {setup['thema']}\n"
+        f"Zielgruppe: {setup['zielgruppe']}\n"
+        f"Ziel: {setup['ziel']}\n"
+        f"Gewünschte Wirkung: {setup['wirkung']}\n"
+        f"Vorhandene Inhalte:\n{setup['rohinhalte']}"
+    )
+    prompt = load_prompt(
+        SLIDE_ARCHITECT_PROMPT,
+        {
+            _GUIDELINE_PLACEHOLDER: guideline_md or "",
+            _BRIEFING_PLACEHOLDER: briefing,
+        },
+    )
+    return get_client().complete(
+        prompt, [{"role": "user", "content": "Erzeuge die Folienarchitektur."}]
+    )
 
 
 def _render_structure_sidebar() -> None:
