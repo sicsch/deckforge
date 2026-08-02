@@ -179,8 +179,8 @@ def get_client() -> LLMClient:
     provider = os.getenv("LLM_PROVIDER", "azure")
     if provider == "azure":
         return AzureOpenAIClient(...)
-    elif provider == "anthropic":
-        return AnthropicClient(...)
+    elif provider == "openrouter":
+        return OpenRouterClient(...)
     raise ValueError(f"Unbekannter Provider: {provider}")
 ```
 
@@ -514,7 +514,7 @@ deckforge/
 │   ├── llm/
 │   │   ├── client.py           # Provider-Abstraktion
 │   │   ├── azure.py
-│   │   └── anthropic.py
+│   │   └── openrouter.py
 │   ├── prompts/
 │   │   └── loader.py           # lädt Templates aus 02-/03-
 │   └── export/
@@ -531,7 +531,7 @@ deckforge/
 ```bash
 # .env.example
 
-# Provider-Auswahl: azure | anthropic
+# Provider-Auswahl: azure | openrouter
 LLM_PROVIDER=azure
 
 # --- Azure OpenAI (Firmenumgebung) ---
@@ -541,8 +541,8 @@ AZURE_OPENAI_DEPLOYMENT=
 AZURE_OPENAI_API_VERSION=
 
 # --- Alternativ-Provider (private Entwicklung) ---
-ANTHROPIC_API_KEY=
-ANTHROPIC_MODEL=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=
 ```
 
 ---
