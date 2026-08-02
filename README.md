@@ -1,6 +1,6 @@
 # deckforge
 
-Präsentationen im Corporate Design mit KI erstellen — über HTML statt PowerPoint.
+Präsentationen im designated Design mit KI erstellen — über HTML statt PowerPoint.
 
 Der Ansatz: Statt eine KI ein schwer kontrollierbares `.pptx` bauen zu lassen,
 werden Design-Vorgaben (Farben, Schriften, Layout-Raster) als maschinenlesbare
@@ -48,9 +48,6 @@ uv sync
 uv run playwright install chromium   # nur für PDF-Export nötig
 ```
 
-Ohne `uv`: siehe [uv-Installation](https://docs.astral.sh/uv/getting-started/installation/).
-Alternativ klassisch mit `pip install pymupdf python-pptx playwright`.
-
 Für die App zusätzlich `.env` anlegen (Vorlage: `.env.example`).
 
 ## Nutzung (CLI)
@@ -84,23 +81,6 @@ uv run 04-pdf-export/export_to_pdf.py deck.html deck.pdf
 app/                    Streamlit-App (in Entwicklung)
 docs/                   Technische Spezifikation
 ```
-
-## Was nicht ins Repository gehört
-
-Die Skripte und Prompts sind generisch und unkritisch. Die **Ergebnisse eines
-Extraktionslaufs** sind es nicht: `pptx_design_tokens.json` enthält die realen
-Farbwerte und Schriften eines konkreten, möglicherweise internen Folienmasters.
-
-Ausgeschlossen über `.gitignore`:
-
-- `*_tokens.json` — Extraktionsergebnisse
-- `*.pdf`, `*.pptx`, `*.potx` — Quelldateien
-- `.env` — Zugangsdaten
-
-Erzeugte Guidelines und generierte Decks gehören ebenfalls nicht hierher.
-Wenn du deckforge in einem Unternehmenskontext einsetzt: Guidelines in einem
-**separaten, internen Repository** ablegen — nicht als zweites Remote dieses
-Repos. Die Trennung sollte strukturell sein, nicht nur eine Frage der Disziplin.
 
 ## Lizenz
 
