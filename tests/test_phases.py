@@ -135,6 +135,64 @@ def test_no_upload_keeps_state_untouched(monkeypatch):
     assert session_state["guideline_name"] is None
 
 
+def test_setup_form_writes_session_state_and_persists_across_rerun(monkeypatch):
+    session_state = _fresh_state(monkeypatch, phase="setup")
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "subheader", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "file_uploader", lambda *a, **k: None)
+    monkeypatch.setattr(
+        phases.st,
+        "text_input",
+        lambda label, value, **k: "Thema" if "Thema" in label else value,
+    )
+    monkeypatch.setattr(phases.st, "text_area", lambda *a, **k: "Stichpunkte")
+    captured_button_kwargs = {}
+    monkeypatch.setattr(
+        phases.st,
+        "button",
+        lambda *a, **k: captured_button_kwargs.update(k) or False,
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["setup"]["thema"] == "Thema"
+    assert session_state["setup"]["rohinhalte"] == "Stichpunkte"
+    # Zielgruppe/Ziel/Wirkung stayed empty -> required fields incomplete
+    assert captured_button_kwargs["disabled"] is True
+
+
+def test_setup_form_enables_button_once_required_fields_filled(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="setup",
+        setup={
+            "thema": "T",
+            "zielgruppe": "Z",
+            "ziel": "G",
+            "wirkung": "W",
+            "rohinhalte": "",
+        },
+    )
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "subheader", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "file_uploader", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "text_input", lambda label, value, **k: value)
+    monkeypatch.setattr(
+        phases.st, "text_area", lambda label, value, **k: value
+    )
+    captured_button_kwargs = {}
+    monkeypatch.setattr(
+        phases.st,
+        "button",
+        lambda *a, **k: captured_button_kwargs.update(k) or False,
+    )
+
+    phases.render_sidebar()
+
+    assert captured_button_kwargs["disabled"] is False
+    assert session_state["setup"]["thema"] == "T"
+
+
 def test_structure_to_deck_only_after_confirm_click(monkeypatch):
     session_state = _fresh_state(monkeypatch, phase="structure")
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)

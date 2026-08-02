@@ -88,8 +88,29 @@ def _render_setup_sidebar() -> None:
         else:
             st.warning("Keine Folientyp-Überschriften gefunden.")
 
-    st.write("Platzhalter: Formularfelder folgen in #25.")
-    if st.button("Struktur generieren"):
+    st.subheader("Angaben zur Präsentation")
+    setup = st.session_state["setup"]
+    setup["thema"] = st.text_input("Thema", value=setup["thema"], key="setup_thema")
+    setup["zielgruppe"] = st.text_input(
+        "Zielgruppe", value=setup["zielgruppe"], key="setup_zielgruppe"
+    )
+    setup["ziel"] = st.text_input("Ziel", value=setup["ziel"], key="setup_ziel")
+    setup["wirkung"] = st.text_input(
+        "Gewünschte Wirkung", value=setup["wirkung"], key="setup_wirkung"
+    )
+    setup["rohinhalte"] = st.text_area(
+        "Rohinhalte (Stichpunkte, bestehender Text)",
+        value=setup["rohinhalte"],
+        key="setup_rohinhalte",
+    )
+
+    required_filled = all(
+        setup[field].strip() for field in ("thema", "zielgruppe", "ziel", "wirkung")
+    )
+    if not required_filled:
+        st.caption("Thema, Zielgruppe, Ziel und Wirkung sind Pflichtfelder.")
+
+    if st.button("Struktur generieren", disabled=not required_filled):
         st.session_state["structure_md"] = (
             "# Platzhalter-Struktur\n\nDummy-Inhalt bis #30."
         )
