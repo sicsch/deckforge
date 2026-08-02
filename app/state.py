@@ -19,6 +19,7 @@ DEFAULT_STATE = {
     "deck_html": None,
     "deck_chat": [],
     "deck_history": [],
+    "confirm_back_to_structure": False,
     "error": None,
 }
 

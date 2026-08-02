@@ -250,7 +250,24 @@ def _render_structure_sidebar() -> None:
 
 def _render_deck_sidebar() -> None:
     st.write("Platzhalter: Chat-Iteration, Downloads, Versionshistorie folgen in #36+.")
-    st.caption("Zurückspringen verwirft den aktuellen HTML-Stand.")
-    if st.button("Zurück zur Struktur"):
-        st.session_state["phase"] = "structure"
-        st.rerun()
+
+    if st.session_state["confirm_back_to_structure"]:
+        st.warning(
+            "Zurückspringen verwirft den aktuellen HTML-Stand und die "
+            "Versionshistorie. Fortfahren?"
+        )
+        if st.button("Ja, zurück zur Struktur", type="primary"):
+            st.session_state["deck_html"] = None
+            st.session_state["deck_chat"] = []
+            st.session_state["deck_history"] = []
+            st.session_state["confirm_back_to_structure"] = False
+            st.session_state["phase"] = "structure"
+            st.rerun()
+        if st.button("Abbrechen"):
+            st.session_state["confirm_back_to_structure"] = False
+            st.rerun()
+    else:
+        st.caption("Zurückspringen verwirft den aktuellen HTML-Stand.")
+        if st.button("Zurück zur Struktur"):
+            st.session_state["confirm_back_to_structure"] = True
+            st.rerun()

@@ -526,8 +526,10 @@ def test_manual_edit_then_chat_iteration_uses_edited_version(monkeypatch):
     )
 
 
-def test_deck_back_to_structure(monkeypatch):
-    session_state = _fresh_state(monkeypatch, phase="deck", deck_html="<p>x</p>")
+def test_deck_back_button_only_shows_warning_first(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html="<p>x</p>", deck_history=["v1"]
+    )
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "rerun", lambda: None)
@@ -535,7 +537,59 @@ def test_deck_back_to_structure(monkeypatch):
 
     phases.render_sidebar()
 
+    assert session_state["phase"] == "deck"
+    assert session_state["confirm_back_to_structure"] is True
+    assert session_state["deck_html"] == "<p>x</p>"
+
+
+def test_deck_back_to_structure_after_confirm_clears_deck_state(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html="<p>x</p>",
+        deck_chat=[{"role": "user", "content": "x"}],
+        deck_history=["v1"],
+        confirm_back_to_structure=True,
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "warning", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(
+        phases.st,
+        "button",
+        lambda label, **k: label == "Ja, zurück zur Struktur",
+    )
+
+    phases.render_sidebar()
+
     assert session_state["phase"] == "structure"
+    assert session_state["confirm_back_to_structure"] is False
+    assert session_state["deck_html"] is None
+    assert session_state["deck_chat"] == []
+    assert session_state["deck_history"] == []
+
+
+def test_deck_back_to_structure_cancel_keeps_deck_state(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html="<p>x</p>",
+        deck_history=["v1"],
+        confirm_back_to_structure=True,
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "warning", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(
+        phases.st, "button", lambda label, **k: label == "Abbrechen"
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["phase"] == "deck"
+    assert session_state["confirm_back_to_structure"] is False
+    assert session_state["deck_html"] == "<p>x</p>"
+    assert session_state["deck_history"] == ["v1"]
 
 
 def test_phase_indicator_renders_no_widget(monkeypatch):
