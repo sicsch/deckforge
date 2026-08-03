@@ -449,11 +449,12 @@ def test_deck_generation_error_reverts_to_structure_phase(monkeypatch):
     assert session_state["error"] == "boom"
 
 
-def _stub_chat_widgets(monkeypatch, chat_inputs, errors=None):
+def _stub_chat_widgets(monkeypatch, chat_inputs, errors=None, css_only=False):
     """Stub chat_input to return each value from `chat_inputs` in turn (None
     after exhaustion), plus the other widgets `_render_structure_sidebar`
-    touches."""
+    touches. `css_only` is what the deck sidebar's style-only checkbox says."""
     inputs = iter(chat_inputs)
+    monkeypatch.setattr(phases.st, "checkbox", lambda *a, **k: css_only)
     monkeypatch.setattr(
         phases.st, "chat_input", lambda *a, **k: next(inputs, None)
     )
@@ -707,6 +708,96 @@ def test_deck_chat_hides_master_css_from_the_model_and_restores_it(monkeypatch):
     deck_html = session_state["deck_html"]
     assert master_block in deck_html
     assert "v2" in deck_html
+
+
+def _deck_with_own_css(css=".x { color: red; }", body="<section>Folie</section>"):
+    master_block = (
+        f"<style>\n{layout_css.MASTER_CSS_MARKER}\n"
+        ".slide { width: var(--slide-width); }\n</style>"
+    )
+    return (
+        f"<html><head>{master_block}<style>{css}</style></head>"
+        f"<body>{body}</body></html>"
+    )
+
+
+def test_style_only_iteration_sends_css_and_keeps_markup_identical(monkeypatch):
+    """Issue #84: der Stil-Pfad ueberträgt nur den CSS-Block, das Markup
+    bleibt byte-identisch."""
+    original = _deck_with_own_css()
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html=original, deck_chat=[], deck_history=[]
+    )
+    _stub_chat_widgets(monkeypatch, ["Headline blau"], css_only=True)
+    captured = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured.append((path, replacements)) or "PROMPT",
+    )
+    fake_client = _FakeClient(result="```css\n.x { color: blue; }\n```")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    phases.render_sidebar()
+
+    path, replacements = captured[0]
+    assert path == phases.CSS_ITERATION_PROMPT
+    assert replacements == {
+        phases._DECK_CSS_PLACEHOLDER: ".x { color: red; }",
+        phases._CHANGE_REQUEST_PLACEHOLDER: "Headline blau",
+    }
+    # no markup and no master CSS in the prompt at all
+    sent = replacements[phases._DECK_CSS_PLACEHOLDER]
+    assert "<section>" not in sent
+    assert layout_css.MASTER_CSS_MARKER not in sent
+
+    deck_html = session_state["deck_html"]
+    assert deck_html == original.replace("color: red;", "color: blue;")
+    assert deck_html.split("<body>")[1] == original.split("<body>")[1]
+
+
+def test_structure_change_still_takes_the_full_path(monkeypatch):
+    """Ohne die Stil-Weiche geht weiterhin das ganze Deck an das Modell."""
+    original = _deck_with_own_css()
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html=original, deck_chat=[], deck_history=[]
+    )
+    _stub_chat_widgets(monkeypatch, ["Folie 2 entfernen"], css_only=False)
+    captured = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured.append((path, replacements)) or "PROMPT",
+    )
+    answer = _deck_with_own_css(body="<section>Andere Folie</section>")
+    monkeypatch.setattr(phases, "get_client", lambda: _FakeClient(result=answer))
+
+    phases.render_sidebar()
+
+    path, replacements = captured[0]
+    assert path == phases.HTML_DECK_CHAT_PROMPT
+    assert "<section>Folie</section>" in replacements[phases._DECK_HTML_PLACEHOLDER]
+    assert "Andere Folie" in session_state["deck_html"]
+
+
+def test_style_only_iteration_falls_back_without_own_css(monkeypatch):
+    """Kein eigener <style>-Block: nichts zum Iterieren, also der volle Weg."""
+    original = "<html><body><section>Folie</section></body></html>"
+    _fresh_state(
+        monkeypatch, phase="deck", deck_html=original, deck_chat=[], deck_history=[]
+    )
+    _stub_chat_widgets(monkeypatch, ["Headline blau"], css_only=True)
+    captured = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured.append((path, replacements)) or "PROMPT",
+    )
+    monkeypatch.setattr(phases, "get_client", lambda: _FakeClient(result=original))
+
+    phases.render_sidebar()
+
+    assert captured[0][0] == phases.HTML_DECK_CHAT_PROMPT
 
 
 def test_deck_chat_preserves_print_css_rules(monkeypatch):
