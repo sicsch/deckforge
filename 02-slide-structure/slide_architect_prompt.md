@@ -38,12 +38,16 @@ Liefere als Markdown:
      (je max. 90 Zeichen)
    - Visual-Idee (was wird gezeigt, nicht wie es gestylt ist)
    - Folientyp (muss aus der Design-Guideline stammen, keine neuen erfinden)
+   - Folienlayout aus dem Folienmaster, falls eine Layout-Liste vorliegt
    - Funktion im roten Faden (Einstieg/Problem/Lösung/Beweis/Call-to-Action/...)
 4. HTML-Briefing: kompakte Zusammenfassung für den nächsten Schritt
    (Schritt 3), damit dort keine Kontext-Wiederholung nötig ist
 
 Regeln:
 - Nutze ausschließlich Folientypen, die in der Design-Guideline definiert sind
+- Liegt eine Liste der Folienlayouts aus dem Folienmaster vor, nennst du je
+  Folie zusätzlich das Layout aus dieser Liste. Nur Layouts aus der Liste,
+  keine erfinden.
 - Wenn ein Inhalt in keinen vorhandenen Folientyp passt, markiere das explizit
   statt einen Folientyp zu erfinden
 - Reduziere auf das Wesentliche: lieber weniger Folien mit klarer Aussage als
@@ -62,6 +66,8 @@ Regeln:
   oder eleganter formulieren könntest.
 
 [HIER Design-Guideline aus Schritt 1 EINFÜGEN]
+
+[HIER Verfügbare Folienlayouts EINFÜGEN]
 
 [HIER Thema/Zielgruppe/Ziel/Wirkung/Inhalte EINFÜGEN]
 ```

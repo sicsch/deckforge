@@ -23,6 +23,25 @@ uv run streamlit run app/main.py
 
 Die App läuft anschließend unter `http://localhost:8501`.
 
+## Layout aus dem Folienmaster
+
+Im Setup lässt sich neben der Guideline die Token-JSON eines Folienmasters
+hochladen (Output von `01-design-guideline/extract_pptx_theme.py`). Daraus
+erzeugt `app/layout_css.py` deterministisch:
+
+- einen fertigen `<style>`-Block: `:root`-Variablen, feste Foliengröße und je
+  Layout eine Regel pro Platzhalter — Position und Größe in Prozent der
+  Foliengröße, nicht in cm
+- ein Komponenten-Set (`cards`, `kpis`, `data-table`, `quote`), das
+  ausschließlich innerhalb eines Platzhalters (`.ph`) wirkt
+- eine Layout-Liste, die Schritt 2 und Schritt 3 im Prompt bekommen
+
+Der Block geht unverändert ins Deck; das Modell füllt nur die Slots. Welche
+Layouts überhaupt verwendet werden dürfen, wird im Setup angehakt —
+Folienmaster enthalten regelmäßig ungenutzte Karteileichen. Ohne Token-JSON
+bleibt das Verhalten wie bisher: das Modell baut das Layout-CSS selbst aus
+der Guideline.
+
 ## Provider-Wechsel
 
 Der LLM-Zugriff läuft über eine schmale Provider-Abstraktion

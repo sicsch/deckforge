@@ -28,6 +28,11 @@ Regeln:
 - Die feste Foliengröße (`.slide` mit `width`, `height`, `overflow: hidden`)
   und das Overflow-Markierungs-Script am Ende des <body> bleiben unverändert
   erhalten, außer der Änderungswunsch betrifft sie explizit
+- Der CSS-Block hinter dem Kommentar
+  `/* Automatisch aus dem Folienmaster erzeugt` bleibt unverändert —
+  Layout-Regeln, Slot-Klassen und Komponenten gleichermaßen.
+  Verlangt der Änderungswunsch eine andere Platzhaltergeometrie, setze sie
+  nicht um, sondern weise auf den Konflikt mit dem Folienmaster hin.
 - Bestehende CSS-Variablen, Komponenten-Klassen und Folienstruktur bleiben
   konsistent — keine neuen Ad-hoc-Styles, wo vorhandene Komponenten reichen
 - Keine Rückfragen, keine Kommentare außerhalb des Dokuments — nur das
