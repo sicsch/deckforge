@@ -1,0 +1,20 @@
+# <type>: <short summary, imperative, 50 chars or less>
+#
+# <detailed description — why, not just what>
+# - Change 1
+# - Change 2
+#
+# Refs #<issue-number>        (use on commits; Closes #<N> goes in the PR body only)
+#
+# Types:
+#   feat     new feature
+#   fix      bug fix
+#   docs     documentation only
+#   config   configuration change
+#   security security-related change
+#
+# Rules:
+# - Subject line: imperative mood, no trailing period, <=50 chars
+# - Atomic: one logical change per commit; if you can't describe it in one
+#   sentence, split it
+# - Body wraps at 72 chars, explains why not what
