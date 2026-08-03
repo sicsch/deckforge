@@ -17,6 +17,7 @@ DEFAULT_STATE = {
     "structure_version": 0,
     "structure_chat": [],
     "deck_html": None,
+    "deck_preflight": None,
     "deck_pdf": None,
     "deck_chat": [],
     "deck_history": [],
