@@ -1,16 +1,27 @@
-Kopiere den folgenden Prompt in deinen Chatbot (ohne Tools). Füge darunter
-den Inhalt von `pdf_design_tokens.json` und `pptx_design_tokens.json` ein.
+Kopiere den folgenden Prompt in einen Chatbot, der Bilder lesen kann. Hänge
+zusätzlich an:
+
+1. **Die Designreferenz selbst** — als PDF oder als Seitenbilder
+   (`extract_pdf_design.py --render-pages 8` legt sie als PNG ab). Ohne sie
+   kann das Modell Raster, Weißraum, Komponenten und Bildsprache nicht
+   ableiten: in den Token-JSONs steht davon nichts drin.
+2. `pdf_design_tokens.json` und `pptx_design_tokens.json`
 
 ---
 
-Du bekommst zwei JSON-Dateien mit automatisiert extrahierten Design-Werten:
+Du bekommst eine Designreferenz als Dokument oder Seitenbilder und zwei JSON-
+Dateien mit automatisiert extrahierten Design-Werten:
 
-1. `pdf_design_tokens.json` — aus einem Geschäftsbericht (PDF), enthält
-   Schriftarten, Schriftgrößen, Text- und Grafikfarben nach Häufigkeit
-2. `pptx_design_tokens.json` — aus einem internen Folienmaster (PPTX),
-   enthält Theme-Farben, Heading-/Body-Font, Folienformat, Textstile je
-   Gliederungsebene (`text_styles`), Layouts mit Platzhalter-Positionen und
-   -Typen (`type_name`) sowie Hintergrundfüllung je Layout (`background`)
+1. **Designreferenz** (Bilder/PDF) — ein Dokument, das im gewünschten Design
+   bereits gut aussieht. Quelle für die Gestaltungslogik: Raster, Weißraum,
+   Komponentenaufbau, Farbeinsatz, Bildsprache, Diagrammlogik.
+2. `pdf_design_tokens.json` — Häufigkeiten von Schriften, Schriftgrößen,
+   Text- und Grafikfarben aus demselben Dokument. Gegenprobe für das, was du
+   im Bild siehst.
+3. `pptx_design_tokens.json` — aus einem freigegebenen Folienmaster: Theme-
+   Farben, Heading-/Body-Font, Folienformat, Textstile je Gliederungsebene
+   (`text_styles`), Layouts mit Platzhalter-Positionen und -Typen
+   (`type_name`) sowie Hintergrundfüllung je Layout (`background`).
 
 Farbwerte im Folienmaster-JSON stehen als `#RRGGBB` oder als `scheme:<name>`
 — letztere löst du über `theme_colors` auf. Fonts `+mj-lt` / `+mn-lt` stehen
@@ -20,38 +31,56 @@ erbt vom `master_background`.
 Aufgabe: Erstelle daraus eine Design-Guideline für HTML-Präsentationen im
 jeweiligen Corporate Design.
 
-Regeln:
-- Der Folienmaster (pptx_design_tokens.json) ist die Source of Truth für
-  Farben, Fonts und Layout-Raster, da er offiziell für Präsentationen
-  freigegeben ist.
-- Das PDF (Geschäftsbericht) nutzt du nur ergänzend: für Diagramm-/
-  Chart-Farblogik, Bildsprache, und um zu prüfen, ob die im Master
-  definierten Farben in der Praxis konsistent verwendet werden.
-- Wenn Werte zwischen beiden Quellen abweichen, liste den Konflikt explizit
-  auf und markiere, welchen Wert du übernommen hast und warum.
-- Keine Floskeln, alles als konkrete Regeln + Werte. Markiere Annahmen
-  dort, wo die extrahierten Daten unklar oder unvollständig sind.
+Arbeitsteilung der Quellen — daran hältst du dich:
+- **Verbindliche Werte** (Farben, Schriften, Typo-Skala, Seitenformat) kommen
+  aus dem Folienmaster. Er ist offiziell freigegeben.
+- **Die Gestaltungslogik** (Raster, Weißraum, Komponentenaufbau, Farbeinsatz,
+  Bildsprache, Diagrammfarben) kommt aus der Designreferenz. Der Folienmaster
+  hat dazu nichts zu sagen — er enthält leere Platzhalterkästen, keine
+  Gestaltung. Leite Gestaltungsregeln niemals aus Platzhalter-Positionen ab.
+- Weichen Werte zwischen beiden ab, gilt der Master. Nenne den Konflikt
+  trotzdem und sag, welchen Wert du übernommen hast.
+- Keine Floskeln, alles als konkrete Regeln + Werte. Markiere Annahmen dort,
+  wo Daten oder Referenz unklar oder unvollständig sind.
 
 Liefere als Markdown:
-- North Star (Wirkung, 1-Satz-Prinzip, 3-5 Merkmale)
-- Farben + Regeln + No-Gos (mit Hex-Werten aus den Theme-Farben)
-- Typo-Skalen (H1/H2/Body/Label/Sonstige): Basis sind `text_styles` aus dem
-  Folienmaster (Größe, Farbe, Ausrichtung je Gliederungsebene), das PDF
-  liefert nur Gegenprobe
-- Layout-System (Seitenformat/Aspect Ratio aus dem Folienmaster, Grid,
-  Ränder, Weißraum, Footer, Sonstige)
-- Komponenten (Card/Badge/Table/Framework/Sonstige): Aufbau + Regeln,
-  abgeleitet aus den Platzhalter-Positionen der Layouts
-- Bildsprache (Icons/Bilder/Diagramm-Farblogik aus dem Geschäftsbericht)
-- Folientypen: genau ein Eintrag je Layout aus `layouts` im Folienmaster,
-  benannt exakt wie dessen `layout_name`. Je Eintrag nur Zweck und
-  Visual-Logik — die Geometrie kommt aus dem Master, nicht aus diesem Text.
-  Keine zusätzlichen Folientypen erfinden, keine Layouts weglassen: die
-  Layout-Liste des Masters ist die Source of Truth für Schritt 2 und 3, diese
-  Guideline darf ihr nicht widersprechen.
-- 10 Hard Rules + QC-Checkliste
-- CSS Tokens (colors/typography/spacing/radius/shadow/lines/other) als
-  fertiges CSS-Variablen-Snippet (:root { --... })
+
+- **North Star**: Wirkung, 1-Satz-Prinzip, 3-5 Merkmale
+- **Farben**: die Werte aus den Theme-Farben, dazu Einsatzregeln — welche
+  Farbe trägt Flächen, welche ist Akzent, wie oft darf der Akzent je Folie
+  vorkommen, wann wird eine Folie invertiert (heller Text auf dunkler
+  Fläche), in welcher Reihenfolge werden Diagrammfarben vergeben. Dazu No-Gos.
+- **Typo-Skalen** (H1/H2/Body/Label/Sonstige): Basis sind `text_styles` aus
+  dem Folienmaster je Gliederungsebene. Die Referenz liefert die Gegenprobe,
+  ob die Sprünge zwischen den Stufen in der Praxis so aussehen.
+- **Layout-System**: Seitenformat und Aspect Ratio aus dem Folienmaster; aus
+  der Referenz Grid (Spalten, Rinnen), Seitenränder, Weißraum-Regel,
+  Kopf- und Fußzone.
+- **Komponenten**: Aufbau und Regeln je Komponente, abgeleitet aus der
+  Referenz. Verwende ausschließlich diese Namen, damit Schritt 3 sie bauen
+  kann: `card`, `kpi`, `table`, `quote`, `statement`, `process`, `chart`.
+  Je Komponente: Aufbau, wann sie verwendet wird, Abstände, Farbeinsatz.
+  Kommt eine in der Referenz nicht vor, leite sie aus deren Formensprache ab
+  und markiere sie als Annahme.
+- **Bildsprache**: Icons, Bilder, Freisteller vs. Vollflächen — und die
+  Farblogik für Diagramme (Reihenfolge, Anzahl gleichzeitiger Farben, wie
+  eine Reihe hervorgehoben wird).
+- **Folientypen**: 6-10 Stück, je mit Zweck, Layout und Visual-Logik. Das ist
+  die Auswahl, aus der Schritt 2 wählt — decke den typischen Bogen einer
+  Präsentation ab (Titel, Agenda, Kernaussage, Vergleich, Zahlen, Prozess,
+  Zitat, Abschluss). Übernimm nicht die Layout-Namen des Folienmasters;
+  benenne stattdessen je Folientyp die Komponenten, aus denen er besteht.
+- **10 Hard Rules**, prüfbar formuliert (z.B. „Der Akzentton steht je Folie
+  auf höchstens einer Fläche" statt „sparsam einsetzen")
+- **QC-Checkliste**
+- **CSS Tokens** (colors/typography/spacing/radius/shadow/lines/other) als
+  fertiges CSS-Variablen-Snippet (`:root { --... }`)
+- **Anhang: Master-Layouts** — die Layout-Namen aus `layouts` mit ihren
+  Platzhaltertypen, unkommentiert aufgelistet. Der Anhang wird nur gebraucht,
+  wenn ein Deck die Geometrie des Folienmasters strikt einhalten muss; im
+  Normalfall arbeitet Schritt 3 mit den Folientypen oben.
+
+[HIER Designreferenz als Datei oder Seitenbilder ANHÄNGEN]
 
 [HIER pdf_design_tokens.json EINFÜGEN]
 
