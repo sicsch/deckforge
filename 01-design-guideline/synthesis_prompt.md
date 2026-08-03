@@ -8,8 +8,14 @@ Du bekommst zwei JSON-Dateien mit automatisiert extrahierten Design-Werten:
 1. `pdf_design_tokens.json` — aus einem Geschäftsbericht (PDF), enthält
    Schriftarten, Schriftgrößen, Text- und Grafikfarben nach Häufigkeit
 2. `pptx_design_tokens.json` — aus einem internen Folienmaster (PPTX),
-   enthält Theme-Farben, Heading-/Body-Font, Folienformat, Layouts mit
-   Platzhalter-Positionen
+   enthält Theme-Farben, Heading-/Body-Font, Folienformat, Textstile je
+   Gliederungsebene (`text_styles`), Layouts mit Platzhalter-Positionen und
+   -Typen (`type_name`) sowie Hintergrundfüllung je Layout (`background`)
+
+Farbwerte im Folienmaster-JSON stehen als `#RRGGBB` oder als `scheme:<name>`
+— letztere löst du über `theme_colors` auf. Fonts `+mj-lt` / `+mn-lt` stehen
+für `heading_font` / `body_font`. Ein `background` mit `"fill": "inherited"`
+erbt vom `master_background`.
 
 Aufgabe: Erstelle daraus eine Design-Guideline für HTML-Präsentationen im
 jeweiligen Corporate Design.
@@ -29,8 +35,9 @@ Regeln:
 Liefere als Markdown:
 - North Star (Wirkung, 1-Satz-Prinzip, 3-5 Merkmale)
 - Farben + Regeln + No-Gos (mit Hex-Werten aus den Theme-Farben)
-- Typo-Skalen (H1/H2/Body/Label/Sonstige) basierend auf den häufigsten
-  Font-Größen und den Theme-Fonts
+- Typo-Skalen (H1/H2/Body/Label/Sonstige): Basis sind `text_styles` aus dem
+  Folienmaster (Größe, Farbe, Ausrichtung je Gliederungsebene), das PDF
+  liefert nur Gegenprobe
 - Layout-System (Seitenformat/Aspect Ratio aus dem Folienmaster, Grid,
   Ränder, Weißraum, Footer, Sonstige)
 - Komponenten (Card/Badge/Table/Framework/Sonstige): Aufbau + Regeln,

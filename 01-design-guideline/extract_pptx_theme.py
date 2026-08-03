@@ -1,6 +1,7 @@
 """
 Extrahiert Design-Tokens aus einem PowerPoint-Folienmaster (.potx oder .pptx):
-Theme-Farben, Schriftfamilien, Layout-Namen, Platzhalter-Positionen.
+Theme-Farben, Schriftfamilien, Layout-Namen, Platzhalter-Positionen,
+Textstile je Gliederungsebene und Hintergrundfuellung je Layout.
 
 Benoetigt: pip install python-pptx
 
@@ -9,19 +10,48 @@ Aufruf:
 
 Output:
     pptx_design_tokens.json  (im selben Ordner)
+
+Farbwerte erscheinen entweder als "#RRGGBB" (feste Farbe) oder als
+"scheme:<name>" (Verweis auf eine Theme-Farbe, siehe theme_colors).
+Fontangaben "+mj-lt" bzw. "+mn-lt" verweisen auf heading_font bzw. body_font
+aus theme_fonts.
 """
 
 import json
 import sys
 
 from pptx import Presentation
+from pptx.oxml.ns import qn
 from pptx.util import Emu
+
+# DrawingML-Fuellarten, wie sie unter <p:bgPr> vorkommen koennen
+FILL_TAGS = {
+    "solidFill": "solid",
+    "gradFill": "gradient",
+    "blipFill": "picture",
+    "pattFill": "pattern",
+    "grpFill": "group",
+    "noFill": "none",
+}
 
 
 def emu_to_cm(value):
     if value is None:
         return None
     return round(Emu(value).cm, 2)
+
+
+def _color_of(element):
+    """Erste Farbangabe unterhalb von element: "#RRGGBB" oder "scheme:<name>"."""
+    if element is None:
+        return None
+    srgb = element.find(f".//{qn('a:srgbClr')}")
+    if srgb is not None:
+        return f"#{srgb.get('val', '').upper()}"
+    scheme = element.find(f".//{qn('a:schemeClr')}")
+    if scheme is not None:
+        return f"scheme:{scheme.get('val')}"
+    return None
 
 
 def extract_theme_colors(prs):
@@ -83,16 +113,88 @@ def extract_theme_fonts(prs):
     return fonts
 
 
+def _style_levels(style_element):
+    """Liest lvl1pPr..lvl9pPr eines txStyles-Blocks (titleStyle, bodyStyle, ...)."""
+    levels = []
+    if style_element is None:
+        return levels
+    for level in range(1, 10):
+        lvl = style_element.find(qn(f"a:lvl{level}pPr"))
+        if lvl is None:
+            continue
+        def_rpr = lvl.find(qn("a:defRPr"))
+        size = def_rpr.get("sz") if def_rpr is not None else None
+        latin = def_rpr.find(qn("a:latin")) if def_rpr is not None else None
+        levels.append(
+            {
+                "level": level,
+                "font_size_pt": round(int(size) / 100, 1) if size else None,
+                "color": (
+                    _color_of(def_rpr.find(qn("a:solidFill")))
+                    if def_rpr is not None
+                    else None
+                ),
+                "align": lvl.get("algn"),
+                "font": latin.get("typeface") if latin is not None else None,
+            }
+        )
+    return levels
+
+
+def extract_text_styles(master):
+    """Schriftgroesse, Farbe, Ausrichtung und Font je Gliederungsebene aus den
+    txStyles des Folienmasters."""
+    styles = {"title": [], "body": []}
+    tx_styles = master.element.find(qn("p:txStyles"))
+    if tx_styles is None:
+        return styles
+    styles["title"] = _style_levels(tx_styles.find(qn("p:titleStyle")))
+    styles["body"] = _style_levels(tx_styles.find(qn("p:bodyStyle")))
+    return styles
+
+
+def extract_background(slide_element):
+    """Hintergrundfuellung eines Layouts oder Masters.
+
+    fill = "inherited" heisst: kein eigenes <p:bg>, der Hintergrund kommt vom
+    Master (bei Layouts) bzw. vom Theme (beim Master).
+    """
+    empty = {"fill": "inherited", "color": None}
+    c_sld = slide_element.find(qn("p:cSld"))
+    if c_sld is None:
+        return empty
+    bg = c_sld.find(qn("p:bg"))
+    if bg is None:
+        return empty
+
+    bg_pr = bg.find(qn("p:bgPr"))
+    if bg_pr is not None:
+        for tag, fill_name in FILL_TAGS.items():
+            fill = bg_pr.find(qn(f"a:{tag}"))
+            if fill is not None:
+                return {"fill": fill_name, "color": _color_of(fill)}
+        return {"fill": None, "color": None}
+
+    # <p:bgRef> verweist auf einen Fuellstil des Themes plus eine Farbe
+    bg_ref = bg.find(qn("p:bgRef"))
+    if bg_ref is not None:
+        return {"fill": "theme_ref", "color": _color_of(bg_ref)}
+    return {"fill": None, "color": None}
+
+
 def extract_layouts(prs):
     layouts = []
     for master_idx, master in enumerate(prs.slide_masters):
         for layout in master.slide_layouts:
             placeholders = []
             for ph in layout.placeholders:
+                ph_type = ph.placeholder_format.type
                 placeholders.append(
                     {
                         "idx": ph.placeholder_format.idx,
                         "type": str(ph.placeholder_format.type),
+                        "type_name": ph_type.name if ph_type is not None else None,
+                        "type_id": ph_type.value if ph_type is not None else None,
                         "name": ph.name,
                         "left_cm": emu_to_cm(ph.left),
                         "top_cm": emu_to_cm(ph.top),
@@ -104,6 +206,7 @@ def extract_layouts(prs):
                 {
                     "master_index": master_idx,
                     "layout_name": layout.name,
+                    "background": extract_background(layout.element),
                     "placeholders": placeholders,
                 }
             )
@@ -116,6 +219,11 @@ def extract(pptx_path: str):
     slide_width_cm = emu_to_cm(prs.slide_width)
     slide_height_cm = emu_to_cm(prs.slide_height)
 
+    # ponytail: Textstile und Master-Hintergrund vom ersten Master, wie schon
+    # theme_colors und theme_fonts. Erst wenn eine Datei mehrere Master mit
+    # unterschiedlichen txStyles hat, lohnt eine Liste je master_index.
+    master = prs.slide_masters[0]
+
     result = {
         "source_file": pptx_path,
         "slide_width_cm": slide_width_cm,
@@ -125,6 +233,8 @@ def extract(pptx_path: str):
         ),
         "theme_colors": extract_theme_colors(prs),
         "theme_fonts": extract_theme_fonts(prs),
+        "text_styles": extract_text_styles(master),
+        "master_background": extract_background(master.element),
         "layouts": extract_layouts(prs),
     }
     return result
@@ -146,4 +256,9 @@ if __name__ == "__main__":
     print(f"Folienformat: {data['slide_width_cm']} x {data['slide_height_cm']} cm")
     print(f"Theme-Farben: {data['theme_colors']}")
     print(f"Theme-Fonts: {data['theme_fonts']}")
+    print(
+        "Textstile: "
+        f"{len(data['text_styles']['title'])} Titel-Ebenen, "
+        f"{len(data['text_styles']['body'])} Body-Ebenen"
+    )
     print(f"Anzahl Layouts gefunden: {len(data['layouts'])}")
