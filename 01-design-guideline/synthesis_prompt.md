@@ -43,8 +43,12 @@ Liefere als Markdown:
 - Komponenten (Card/Badge/Table/Framework/Sonstige): Aufbau + Regeln,
   abgeleitet aus den Platzhalter-Positionen der Layouts
 - Bildsprache (Icons/Bilder/Diagramm-Farblogik aus dem Geschäftsbericht)
-- 6–10 Folientypen (Zweck, Layout, Visual-Logik, Sonstige), abgeleitet aus
-  den vorhandenen Folienmaster-Layouts
+- Folientypen: genau ein Eintrag je Layout aus `layouts` im Folienmaster,
+  benannt exakt wie dessen `layout_name`. Je Eintrag nur Zweck und
+  Visual-Logik — die Geometrie kommt aus dem Master, nicht aus diesem Text.
+  Keine zusätzlichen Folientypen erfinden, keine Layouts weglassen: die
+  Layout-Liste des Masters ist die Source of Truth für Schritt 2 und 3, diese
+  Guideline darf ihr nicht widersprechen.
 - 10 Hard Rules + QC-Checkliste
 - CSS Tokens (colors/typography/spacing/radius/shadow/lines/other) als
   fertiges CSS-Variablen-Snippet (:root { --... })
