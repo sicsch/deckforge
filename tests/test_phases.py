@@ -1,5 +1,6 @@
 import httpx
 import openai
+import pytest
 
 from app import phases, state
 
@@ -817,6 +818,61 @@ def test_deck_back_to_structure_cancel_keeps_deck_state(monkeypatch):
     assert session_state["confirm_back_to_structure"] is False
     assert session_state["deck_html"] == "<p>x</p>"
     assert session_state["deck_history"] == [_HISTORY_ENTRY]
+
+
+_LINT_GUIDELINE = ":root { --color-primary: #1A73E8; }"
+_LINT_DECK = '<p style="color: #ff0000">x</p>'
+
+
+def test_lint_report_can_be_sent_back_as_change_request(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        guideline_md=_LINT_GUIDELINE,
+        deck_html=_LINT_DECK,
+        deck_chat=[],
+        deck_history=[],
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "expander", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    captured = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured.append(replacements) or "PROMPT",
+    )
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(result="<p>fixed</p>")
+    )
+
+    phases._render_lint_report()
+
+    assert session_state["deck_html"] == "<p>fixed</p>"
+    assert "#ff0000" in captured[0][phases._CHANGE_REQUEST_PLACEHOLDER]
+    assert session_state["deck_history"][0]["html"] == _LINT_DECK
+
+
+def test_lint_report_stays_silent_for_a_compliant_deck(monkeypatch):
+    _fresh_state(
+        monkeypatch,
+        phase="deck",
+        guideline_md=_LINT_GUIDELINE,
+        deck_html='<style>.slide{color:#1a73e8}</style><p class="slide">x</p>',
+    )
+    successes = []
+    monkeypatch.setattr(phases.st, "success", successes.append)
+    monkeypatch.setattr(
+        phases.st,
+        "expander",
+        lambda *a, **k: pytest.fail("expander shown for a compliant deck"),
+    )
+
+    phases._render_lint_report()
+
+    assert successes == ["Design-Prüfung: keine Abweichungen von den Tokens gefunden."]
 
 
 def test_phase_indicator_renders_no_widget(monkeypatch):
