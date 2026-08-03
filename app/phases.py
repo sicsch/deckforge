@@ -152,6 +152,11 @@ PHASE_LABELS = {
 }
 
 _HEADING_RE = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
+_SLIDE_TYPE_SECTION_RE = re.compile(
+    r"^##\s+Folientypen\b[^\n]*$(.*?)(?=^##\s|\Z)",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
+)
+_SLIDE_TYPE_RE = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
 _FENCE_RE = re.compile(r"```(?:html)?[^\n]*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 _HTML_ROOT_RE = re.compile(r"<(?:html|section)\b", re.IGNORECASE)
 
@@ -178,15 +183,29 @@ def _clean_deck_html(answer: str) -> str:
     return text
 
 
+def _guideline_slide_types(markdown: str) -> list[str]:
+    """The slide types of a guideline: H3 headings under `## Folientypen`.
+
+    Counting every H2/H3 turns "No-Gos", "Hard Rules" and "CSS Tokens" into
+    slide types, and `_slide_type_hint()` then offers them to the model as
+    layouts to pick from. A guideline without that section keeps the old
+    behaviour, so older files still yield candidates.
+    """
+    section = _SLIDE_TYPE_SECTION_RE.search(markdown)
+    if section:
+        types = _SLIDE_TYPE_RE.findall(section.group(1))
+        if types:
+            return types
+    return _HEADING_RE.findall(markdown)
+
+
 def _validate_guideline(markdown: str) -> tuple[list[str], list[str]]:
     """Heuristic scan (tech-spec risk 11): CSS custom properties inside a
-    `:root { ... }` block, plus H2/H3 headings as slide-type candidates.
-    Informational only — never raises, an unstructured file just yields
-    empty lists.
+    `:root { ... }` block, plus the guideline's slide types. Informational
+    only — never raises, an unstructured file just yields empty lists.
     """
     tokens = list(lint.guideline_tokens(markdown))
-    slide_types = _HEADING_RE.findall(markdown)
-    return tokens, slide_types
+    return tokens, _guideline_slide_types(markdown)
 
 
 def render_phase_indicator() -> None:

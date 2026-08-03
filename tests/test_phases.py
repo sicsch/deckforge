@@ -308,6 +308,37 @@ def test_guideline_with_tokens_and_headings_reports_detection(monkeypatch):
     assert session_state["slide_types"] == ["Titelfolie", "Inhaltsfolie"]
 
 
+def test_slide_types_come_from_the_folientypen_section_only():
+    """A rich guideline has many headings — only the slide types are types.
+
+    Without the section boundary, "No-Gos" and "Hard Rules" end up in
+    `_slide_type_hint()` and get offered to the model as layouts.
+    """
+    guideline = (
+        "## Farben\n\n### No-Gos\n\n"
+        "## Komponenten\n\n### `chart`\n\n### `statement`\n\n"
+        "## Folientypen\n\n"
+        "### Titelfolie\n\nZweck: Einstieg.\n\n"
+        "### Diagrammfolie\n\nZweck: Entwicklung zeigen.\n\n"
+        "## Hard Rules\n\n### Keine Aufzählungen\n"
+    )
+
+    assert phases._guideline_slide_types(guideline) == [
+        "Titelfolie",
+        "Diagrammfolie",
+    ]
+
+
+def test_guideline_without_the_section_still_yields_candidates():
+    """Older guidelines have no `## Folientypen` — keep the old scan."""
+    guideline = "## Titelfolie\n\n### Inhaltsfolie\n"
+
+    assert phases._guideline_slide_types(guideline) == [
+        "Titelfolie",
+        "Inhaltsfolie",
+    ]
+
+
 def test_unstructured_guideline_triggers_warning_but_does_not_block(monkeypatch):
     session_state = _fresh_state(
         monkeypatch,
