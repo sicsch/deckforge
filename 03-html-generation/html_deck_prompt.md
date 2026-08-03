@@ -8,8 +8,10 @@ dann erst der eigentliche Code — verhindert unstrukturiertes
 ## Inputs
 
 1. Markdown-Design-Guideline inkl. CSS-Tokens (Output Schritt 1)
-2. Folienstruktur / Folientabelle (Output Schritt 2)
-3. HTML-Briefing (Teil des Outputs aus Schritt 2)
+2. Layout-CSS und Layout-Liste aus dem Folienmaster (optional, erzeugt von
+   `app/layout_css.py` aus `pptx_design_tokens.json`)
+3. Folienstruktur / Folientabelle (Output Schritt 2)
+4. HTML-Briefing (Teil des Outputs aus Schritt 2)
 
 ## Prompt
 
@@ -30,12 +32,20 @@ PHASE 1 — Preflight-Plan (als Markdown, vor jedem Code):
 Warte nach dem Preflight-Plan auf Bestätigung, bevor du Code schreibst.
 
 PHASE 2 — Code (erst nach Bestätigung):
-1. Design-System zuerst: CSS-Variablen aus den Tokens, Grundlayout
-   (Seitenformat/Aspect Ratio aus der Guideline), wiederverwendbare
-   Komponenten als CSS-Klassen. Jede Folie bekommt dieselbe feste
-   Pixelgröße — 1920x1080 (16:9), außer die Guideline nennt ein anderes
-   Seitenformat. Inhalt, der nicht passt, wird abgeschnitten statt die
-   Folie zu dehnen:
+1. Design-System zuerst. Liegt ein Layout-CSS aus dem Folienmaster vor,
+   übernimmst du es als ersten <style>-Block wörtlich und unverändert: es
+   definiert CSS-Variablen, Foliengröße, die Platzhalterboxen je Layout und
+   die Komponenten. Du erfindest dafür kein eigenes Layout-CSS, verschiebst
+   keine Box und legst keine zweite Foliengröße fest. Fehlende Angaben
+   ergänzt du in einem zweiten <style>-Block, ohne den ersten zu
+   überschreiben.
+
+   Ohne Folienmaster-CSS baust du das Design-System selbst aus den Tokens
+   der Guideline: CSS-Variablen, Grundlayout (Seitenformat/Aspect Ratio aus
+   der Guideline), wiederverwendbare Komponenten als CSS-Klassen. Jede Folie
+   bekommt dieselbe feste Pixelgröße — 1920x1080 (16:9), außer die Guideline
+   nennt ein anderes Seitenformat. Inhalt, der nicht passt, wird
+   abgeschnitten statt die Folie zu dehnen:
 
    .slide {
      width: 1920px;
@@ -88,6 +98,12 @@ Regeln:
 - Jede Folie = ein <section class="slide">-Block in der definierten
   Seitengröße. Keine Folie bekommt eine abweichende Höhe oder Breite —
   passt der Inhalt nicht, wird er gekürzt oder auf zwei Folien verteilt.
+- Mit Folienmaster-CSS: jede Folie bekommt zusätzlich die Layout-Klasse
+  (`<section class="slide layout-...">`), jeder Textblock sitzt in einem
+  Platzhalter (`<div class="ph slot-...">`). Nur Layouts und Slots aus der
+  Layout-Liste verwenden, keine erfinden. Mehrspaltiges Innenleben eines
+  Inhaltsplatzhalters entsteht über die Komponenten-Klassen, nie über
+  eigene Pixelpositionen.
 - Konsistenz vor Kreativität: gleicher Folientyp = exakt gleiches Layout
 - Headline und Bullets aus der Folienstruktur wörtlich übernehmen. Nicht
   umformulieren, nicht kürzen, nicht ergänzen, keine zusätzlichen Folientexte
@@ -96,6 +112,8 @@ Regeln:
   Nutzer, wo Inhalt fehlt. Nicht durch erfundene Inhalte ersetzen.
 
 [HIER Design-Guideline aus Schritt 1 EINFÜGEN]
+
+[HIER Layout-CSS und Layout-Liste aus dem Folienmaster EINFÜGEN]
 
 [HIER Folienstruktur + HTML-Briefing aus Schritt 2 EINFÜGEN]
 ```
