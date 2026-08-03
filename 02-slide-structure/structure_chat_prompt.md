@@ -25,6 +25,12 @@ Regeln:
 - Ändere nur, was der Änderungswunsch verlangt — der Rest bleibt erhalten
 - Nutze weiterhin ausschließlich Folientypen aus der ursprünglichen Struktur,
   außer der Änderungswunsch verlangt explizit einen neuen
+- Die Folientabelle behält je Folie Headline (max. 60 Zeichen) und 3-5 Bullets
+  (je max. 90 Zeichen) als fertigen Endtext. Auch neu entstehende Folien
+  bekommen fertige Texte, keine Beschreibungen.
+- Nutze ausschließlich Fakten aus der bestehenden Struktur und dem
+  Änderungswunsch. Fehlende Angaben als `[FEHLT: was gebraucht wird]`
+  markieren, nicht erfinden.
 - Keine Rückfragen, keine Kommentare außerhalb der Struktur — nur das
   aktualisierte Markdown
 
