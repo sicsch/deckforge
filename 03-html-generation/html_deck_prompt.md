@@ -32,7 +32,17 @@ Warte nach dem Preflight-Plan auf Bestätigung, bevor du Code schreibst.
 PHASE 2 — Code (erst nach Bestätigung):
 1. Design-System zuerst: CSS-Variablen aus den Tokens, Grundlayout
    (Seitenformat/Aspect Ratio aus der Guideline), wiederverwendbare
-   Komponenten als CSS-Klassen
+   Komponenten als CSS-Klassen. Jede Folie bekommt dieselbe feste
+   Pixelgröße — 1920x1080 (16:9), außer die Guideline nennt ein anderes
+   Seitenformat. Inhalt, der nicht passt, wird abgeschnitten statt die
+   Folie zu dehnen:
+
+   .slide {
+     width: 1920px;
+     height: 1080px;
+     overflow: hidden;
+     position: relative;
+   }
 2. Print-Regeln (@media print) von Anfang an mitdenken, nicht nachträglich:
    Seitenumbrüche pro Folie (page-break-after: always), keine abgeschnittenen
    Elemente, Hintergrundfarben/-grafiken für den Druck aktivieren
@@ -42,12 +52,42 @@ PHASE 2 — Code (erst nach Bestätigung):
 4. Eine einzige HTML-Datei mit eingebettetem <style>, kein externes CSS,
    kein externes JS (Ausnahme: falls interaktive Elemente explizit
    gewünscht sind)
+5. Overflow-Markierung: übernimm die folgenden beiden Blöcke unverändert.
+   Sie machen abgeschnittenen Inhalt in der Vorschau sichtbar und
+   verschwinden im PDF-Export. CSS in den <style>-Block, das <script> ans
+   Ende des <body>:
+
+   .overflow-warning {
+     outline: 3px dashed red;
+     outline-offset: -3px;
+   }
+   @media print {
+     .overflow-warning { outline: none; }
+   }
+
+   <script>
+   document.querySelectorAll(".slide").forEach(function (slide) {
+     var frame = slide.getBoundingClientRect();
+     slide.querySelectorAll("*").forEach(function (el) {
+       var box = el.getBoundingClientRect();
+       if (
+         el.scrollHeight > el.clientHeight + 1 ||
+         el.scrollWidth > el.clientWidth + 1 ||
+         box.bottom > frame.bottom + 1 ||
+         box.right > frame.right + 1
+       ) {
+         el.classList.add("overflow-warning");
+       }
+     });
+   });
+   </script>
 
 Regeln:
 - Halte dich strikt an die CSS-Tokens aus der Design-Guideline, keine
   Farben/Fonts/Abstände frei erfinden
 - Jede Folie = ein <section class="slide">-Block in der definierten
-  Seitengröße
+  Seitengröße. Keine Folie bekommt eine abweichende Höhe oder Breite —
+  passt der Inhalt nicht, wird er gekürzt oder auf zwei Folien verteilt.
 - Konsistenz vor Kreativität: gleicher Folientyp = exakt gleiches Layout
 - Headline und Bullets aus der Folienstruktur wörtlich übernehmen. Nicht
   umformulieren, nicht kürzen, nicht ergänzen, keine zusätzlichen Folientexte
