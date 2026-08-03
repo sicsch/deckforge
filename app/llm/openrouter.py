@@ -4,6 +4,8 @@ import os
 
 from openai import OpenAI
 
+from .chat import complete_chat
+
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
@@ -16,8 +18,4 @@ class OpenRouterClient:
         self._model = os.environ["OPENROUTER_MODEL"]
 
     def complete(self, system: str, messages: list[dict]) -> str:
-        response = self._client.chat.completions.create(
-            model=self._model,
-            messages=[{"role": "system", "content": system}, *messages],
-        )
-        return response.choices[0].message.content
+        return complete_chat(self._client, self._model, system, messages)

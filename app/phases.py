@@ -61,22 +61,87 @@ _ROHINHALTE_HELP = (
 )
 
 _LLM_ERROR_MESSAGES = (
+    # APITimeoutError first — it is a subclass of APIConnectionError.
     (openai.APITimeoutError, "Zeitüberschreitung beim LLM-Aufruf."),
     (openai.AuthenticationError, "Authentifizierung beim LLM-Provider fehlgeschlagen."),
     (openai.RateLimitError, "Rate Limit beim LLM-Provider erreicht."),
+    (openai.APIConnectionError, "Keine Verbindung zum LLM-Endpoint."),
 )
+
+_MAX_ERROR_DETAIL = 300
+_HTML_ERROR_RE = re.compile(r"<\s*(?:!doctype\s+html|html|head|table)\b", re.IGNORECASE)
+_STATUS_PREFIX_RE = re.compile(r"^Error code: \d+ - ")
+
+
+def _shorten(text: str) -> str:
+    """Collapse an error body into a single readable line."""
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= _MAX_ERROR_DETAIL:
+        return collapsed
+    return f"{collapsed[:_MAX_ERROR_DETAIL]} […]"
+
+
+def _describe_status_error(exc: openai.APIStatusError) -> str:
+    """Name the HTTP status instead of dumping the response body.
+
+    The SDK puts the raw body into the exception message whenever it isn't
+    JSON. For an HTML error page that is kilobytes of markup, which used to
+    reach st.error verbatim.
+    """
+    body = str(exc)
+    if _HTML_ERROR_RE.search(body):
+        return (
+            f"HTTP {exc.status_code} — die Antwort kam als HTML-Fehlerseite von "
+            "einem Gateway, nicht vom Modell. Bei langen Generierungen ist das "
+            "meist dessen Antwortfrist."
+        )
+    return f"HTTP {exc.status_code}: {_STATUS_PREFIX_RE.sub('', _shorten(body))}"
 
 
 def _describe_llm_error(exc: Exception) -> str:
-    """Map known transient/auth failures to an understandable German message.
+    """Map known failures to an understandable German message.
 
-    Falls back to str(exc) for anything else — never a raw stacktrace, but
-    also never invented text for errors we don't recognize.
+    Falls back to a shortened str(exc) for anything else — never a raw
+    stacktrace, never invented text for errors we don't recognize, and never
+    more than one paragraph.
     """
     for exc_type, message in _LLM_ERROR_MESSAGES:
         if isinstance(exc, exc_type):
             return f"{message} Bitte erneut versuchen."
-    return str(exc)
+    if isinstance(exc, openai.APIStatusError):
+        return _describe_status_error(exc)
+    return _shorten(str(exc))
+
+
+_ERROR_PREFIXES = {
+    "structure_generation": "Strukturgenerierung fehlgeschlagen",
+    "structure_iteration": "Änderung fehlgeschlagen",
+    "deck_generation": "Deck-Generierung fehlgeschlagen",
+    "deck_iteration": "Änderung fehlgeschlagen",
+}
+
+
+def _set_error(exc: Exception, scope: str) -> None:
+    """Record a failure together with the step it happened in."""
+    st.session_state["error"] = _describe_llm_error(exc)
+    st.session_state["error_scope"] = scope
+
+
+def _clear_error() -> None:
+    st.session_state["error"] = None
+    st.session_state["error_scope"] = None
+
+
+def _render_error() -> None:
+    """Show the current error under the label of the step that produced it.
+
+    A failed deck generation drops back into the structure phase, where a
+    fixed "Änderung fehlgeschlagen" would name the wrong step.
+    """
+    if not st.session_state["error"]:
+        return
+    prefix = _ERROR_PREFIXES.get(st.session_state["error_scope"], "Fehler")
+    st.error(f"{prefix}: {st.session_state['error']}")
 
 
 PHASES = ("setup", "structure", "deck")
@@ -291,16 +356,15 @@ def _render_setup_sidebar() -> None:
                     setup, st.session_state["guideline_md"]
                 )
             except Exception as exc:
-                st.session_state["error"] = _describe_llm_error(exc)
+                _set_error(exc, "structure_generation")
             else:
                 st.session_state["structure_md"] = structure_md
                 st.session_state["structure_version"] += 1
-                st.session_state["error"] = None
+                _clear_error()
                 st.session_state["phase"] = "structure"
                 st.rerun()
 
-    if st.session_state["error"]:
-        st.error(f"Strukturgenerierung fehlgeschlagen: {st.session_state['error']}")
+    _render_error()
 
 
 def _layout_catalog() -> str:
@@ -383,20 +447,13 @@ def _generate_structure_iteration(
     return get_client().complete(prompt, [{"role": "user", "content": change_request}])
 
 
-def _generate_deck_html(
-    structure_md: str, guideline_md: str | None
-) -> tuple[str, str]:
-    """Fill the HTML-deck prompt with guideline + confirmed structure and run it.
+def _deck_prompt(structure_md: str, guideline_md: str | None) -> str:
+    """The HTML-deck prompt with guideline + confirmed structure filled in.
 
-    Two calls, matching the two phases the prompt template describes: the
-    preflight plan first, then the code with that plan in context. The plan
-    is fed back as an assistant turn, so the guideline and the structure are
-    sent once per call rather than repeated inside a single prompt.
-
-    Returns `(preflight_plan, deck_html)` — the plan names the layout risks
-    the model saw, which is worth showing rather than discarding.
+    Both phases of a run share it verbatim, so the guideline and the structure
+    travel once per call instead of being repeated inside a single prompt.
     """
-    prompt = load_prompt(
+    return load_prompt(
         HTML_DECK_PROMPT,
         {
             _GUIDELINE_PLACEHOLDER: guideline_md or "",
@@ -404,18 +461,26 @@ def _generate_deck_html(
             _STRUCTURE_BRIEFING_PLACEHOLDER: structure_md,
         },
     )
-    client = get_client()
-    preflight = [{"role": "user", "content": _PREFLIGHT_INSTRUCTION}]
-    plan = client.complete(prompt, preflight)
-    deck_html = client.complete(
+
+
+def _generate_preflight(prompt: str) -> str:
+    """Phase 1 of the prompt template: the plan as Markdown, no code yet."""
+    return get_client().complete(
+        prompt, [{"role": "user", "content": _PREFLIGHT_INSTRUCTION}]
+    )
+
+
+def _generate_deck_from_plan(prompt: str, plan: str) -> str:
+    """Phase 2: the deck, with the plan handed back as an assistant turn."""
+    deck_html = get_client().complete(
         prompt,
         [
-            *preflight,
+            {"role": "user", "content": _PREFLIGHT_INSTRUCTION},
             {"role": "assistant", "content": plan},
             {"role": "user", "content": _CODE_INSTRUCTION},
         ],
     )
-    return plan, _clean_deck_html(deck_html)
+    return _clean_deck_html(deck_html)
 
 
 def _generate_deck_html_iteration(deck_html: str, change_request: str) -> str:
@@ -481,18 +546,17 @@ def _render_structure_sidebar() -> None:
                     st.session_state["slide_types"],
                 )
             except Exception as exc:
-                st.session_state["error"] = _describe_llm_error(exc)
+                _set_error(exc, "structure_iteration")
             else:
                 st.session_state["structure_md"] = structure_md
                 st.session_state["structure_version"] += 1
-                st.session_state["error"] = None
+                _clear_error()
                 st.session_state["structure_chat"].append(
                     {"role": "assistant", "content": "Struktur aktualisiert."}
                 )
         st.rerun()
 
-    if st.session_state["error"]:
-        st.error(f"Änderung fehlgeschlagen: {st.session_state['error']}")
+    _render_error()
 
     with st.expander("Struktur manuell bearbeiten"):
         edited_md = st.text_area(
@@ -504,7 +568,7 @@ def _render_structure_sidebar() -> None:
         if st.button("Manuelle Änderung übernehmen"):
             st.session_state["structure_md"] = edited_md
             st.session_state["structure_version"] += 1
-            st.session_state["error"] = None
+            _clear_error()
             st.rerun()
 
     if st.button(
@@ -568,7 +632,7 @@ def _apply_deck_change(change_request: str, css_only: bool = False) -> None:
             )
             deck_html = iterate(st.session_state["deck_html"], change_request)
         except Exception as exc:
-            st.session_state["error"] = _describe_llm_error(exc)
+            _set_error(exc, "deck_iteration")
         else:
             st.session_state["deck_history"].append(
                 {
@@ -579,7 +643,7 @@ def _apply_deck_change(change_request: str, css_only: bool = False) -> None:
             )
             st.session_state["deck_html"] = deck_html
             st.session_state["deck_pdf"] = None
-            st.session_state["error"] = None
+            _clear_error()
             st.session_state["deck_chat"].append(
                 {"role": "assistant", "content": "Deck aktualisiert."}
             )
@@ -602,22 +666,46 @@ def _render_lint_report() -> None:
             st.rerun()
 
 
+def _reusable_preflight() -> str | None:
+    """The stored plan, as long as it still belongs to the current structure.
+
+    Every structure change bumps `structure_version` and invalidates it that
+    way. Without this, a failed phase 2 would throw away a perfectly good plan
+    and pay for both calls again on the next attempt.
+    """
+    if st.session_state["preflight_version"] != st.session_state["structure_version"]:
+        return None
+    return st.session_state["deck_preflight"]
+
+
 def _render_deck_sidebar() -> None:
     if st.session_state["deck_html"] is None:
-        with st.spinner("Deck wird generiert (erst Preflight-Plan, dann Code)..."):
+        plan = _reusable_preflight()
+        label = (
+            "Deck wird generiert (Code nach vorhandenem Preflight-Plan)..."
+            if plan
+            else "Deck wird generiert (erst Preflight-Plan, dann Code)..."
+        )
+        with st.spinner(label):
             try:
-                preflight, deck_html = _generate_deck_html(
+                prompt = _deck_prompt(
                     st.session_state["structure_md"], st.session_state["guideline_md"]
                 )
+                if plan is None:
+                    plan = _generate_preflight(prompt)
+                    st.session_state["deck_preflight"] = plan
+                    st.session_state["preflight_version"] = st.session_state[
+                        "structure_version"
+                    ]
+                deck_html = _generate_deck_from_plan(prompt, plan)
             except Exception as exc:
-                st.session_state["error"] = _describe_llm_error(exc)
+                _set_error(exc, "deck_generation")
                 st.session_state["phase"] = "structure"
                 st.rerun()
             else:
-                st.session_state["deck_preflight"] = preflight
                 st.session_state["deck_html"] = deck_html
                 st.session_state["deck_pdf"] = None
-                st.session_state["error"] = None
+                _clear_error()
 
     for message in st.session_state["deck_chat"]:
         with st.chat_message(message["role"]):
@@ -634,8 +722,7 @@ def _render_deck_sidebar() -> None:
         _apply_deck_change(change_request, css_only=css_only)
         st.rerun()
 
-    if st.session_state["error"]:
-        st.error(f"Änderung fehlgeschlagen: {st.session_state['error']}")
+    _render_error()
 
     _render_lint_report()
 
@@ -657,7 +744,7 @@ def _render_deck_sidebar() -> None:
             if st.button("Wiederherstellen"):
                 st.session_state["deck_html"] = history[selected]["html"]
                 st.session_state["deck_pdf"] = None
-                st.session_state["error"] = None
+                _clear_error()
                 st.rerun()
 
     _render_pdf_export()
@@ -671,6 +758,7 @@ def _render_deck_sidebar() -> None:
             st.session_state["deck_html"] = None
             st.session_state["deck_pdf"] = None
             st.session_state["deck_preflight"] = None
+            st.session_state["preflight_version"] = -1
             st.session_state["deck_chat"] = []
             st.session_state["deck_history"] = []
             st.session_state["confirm_back_to_structure"] = False

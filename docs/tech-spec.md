@@ -117,7 +117,7 @@ mitverändert.
 | **Portabilität** | Der LLM-Provider ist über Konfiguration austauschbar. Die App muss ohne Codeänderung sowohl gegen Azure OpenAI (Firmenumgebung) als auch gegen einen alternativen Endpoint (private Entwicklungsumgebung) laufen. |
 | **Reproduzierbarkeit** | Abhängigkeiten über `pyproject.toml` + `uv.lock`. `uv sync` erzeugt auf jedem Rechner eine identische Umgebung. |
 | **Datensparsamkeit** | Keine Persistenz von Guidelines, Inhalten oder generierten Decks auf Platte (MVP). Alles bleibt im Session-State und ist nach Prozessende weg. |
-| **Latenz** | Generierungsläufe dauern LLM-bedingt 10–60 s. Die App zeigt während der Verarbeitung einen Fortschrittsindikator und blockiert Eingaben. Streaming ist wünschenswert, aber nicht MVP-kritisch. |
+| **Latenz** | Generierungsläufe dauern LLM-bedingt 10–60 s. Die App zeigt während der Verarbeitung einen Fortschrittsindikator und blockiert Eingaben. Die Antwort wird gestreamt, damit lange Läufe nicht an Antwortfristen scheitern; angezeigt wird sie weiterhin erst am Stück. |
 | **Fehlertoleranz** | API-Fehler (Timeout, Rate Limit, Auth) werden abgefangen und als verständliche Meldung angezeigt, ohne den Session-State zu verlieren. |
 | **Sicherheit** | Keine Secrets im Code oder Repo. Konfiguration ausschließlich über `.env` (gitignored) oder Umgebungsvariablen. |
 | **Wartbarkeit** | Prompts liegen als versionierte Markdown-Dateien im Repo, nicht als String-Literale im Code. |
@@ -398,6 +398,7 @@ Bewusst nicht enthalten, um Scope Creep zu vermeiden:
 | Playwright auf dem Firmenlaptop nicht installierbar | Kein PDF-Export in der App | Export ist optional; manueller Browser-Druckweg ist dokumentiert (`04-pdf-export/README.md`). |
 | Guideline-Markdown ist unstrukturiert oder unvollständig | Schlechte Generierungsergebnisse | Validierung beim Upload (S-02): Prüfen, ob CSS-Tokens und Folientypen erkennbar sind, sonst Warnhinweis. |
 | Streamlit-Rerun-Verhalten führt zu State-Verlust | Nutzer verliert Arbeitsstand | State-Zugriffe konsequent über `st.session_state`, keine lokalen Variablen über Reruns hinweg. Frühe Tests mit Iterationen. |
+| Lange Generierungen überschreiten die Antwortfrist zwischengeschalteter Gateways | Aufruf endet mit einer HTTP-Fehlerseite statt einer Antwort | Antworten werden gestreamt (`app/llm/chat.py`), Header und erster Chunk sind sofort unterwegs. Abschaltbar über `LLM_STREAMING=0`, Timeout über `LLM_TIMEOUT_SECONDS`. |
 
 ### Annahmen
 
@@ -465,9 +466,13 @@ manuelle Zwischenschritte.
 
 1. Persistenz: Projekte lokal speichern und laden
 2. Automatisierte Token-Compliance-Prüfung des generierten HTML
-3. Streaming der LLM-Antworten
-4. Schritt 1 (Guideline-Extraktion) im UI statt CLI
-5. Folien-Navigation in der Vorschau
+3. Schritt 1 (Guideline-Extraktion) im UI statt CLI
+4. Folien-Navigation in der Vorschau
+
+Streaming der LLM-Antworten war hier gelistet und ist vorgezogen umgesetzt —
+nicht als Komfortfunktion, sondern weil ohne Streaming lange Generierungen an
+der Antwortfrist zwischengeschalteter Gateways scheitern. Die Antwort bleibt
+für die App synchron, sie wird nur früher übertragen.
 
 ---
 
