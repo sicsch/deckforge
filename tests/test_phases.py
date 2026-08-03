@@ -137,6 +137,67 @@ def test_auth_error_shows_understandable_message_not_raw_exception(monkeypatch):
     assert any("Authentifizierung" in msg for msg in errors)
 
 
+_HTML_ERROR_PAGE = (
+    "<HTML> <HEAD> <STYLE> table.stat td { font-size: 75% } </STYLE> </HEAD> "
+    "<BODY> <TABLE border=0 cellPadding=1 width='80%'> <TR> <TD>"
+    "<FONT face='Helvetica'><big>Keine gültige Antwort innerhalb der Frist"
+    "</big></FONT></TD> </TR> </TABLE> </BODY> </HTML>"
+)
+
+
+def _run_setup_with_error(monkeypatch, exc):
+    """Trigger one failing structure generation, return (state, shown errors)."""
+    session_state = _fresh_state(monkeypatch, phase="setup", setup=_FILLED_SETUP)
+    _stub_generation_widgets(monkeypatch)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    errors = []
+    monkeypatch.setattr(phases.st, "error", lambda msg: errors.append(msg))
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(phases, "get_client", lambda: _FakeClient(error=exc))
+
+    phases.render_sidebar()
+
+    return session_state, errors
+
+
+def test_html_error_page_is_reduced_to_one_line(monkeypatch):
+    response = httpx.Response(
+        502, request=httpx.Request("POST", "https://example.invalid")
+    )
+    exc = openai.InternalServerError(_HTML_ERROR_PAGE, response=response, body=None)
+
+    session_state, errors = _run_setup_with_error(monkeypatch, exc)
+
+    message = session_state["error"]
+    assert "HTTP 502" in message
+    assert "<" not in message
+    assert len(message) < 300
+    assert any("HTTP 502" in msg for msg in errors)
+
+
+def test_status_error_names_the_code_without_the_sdk_prefix(monkeypatch):
+    response = httpx.Response(
+        400, request=httpx.Request("POST", "https://example.invalid")
+    )
+    exc = openai.BadRequestError(
+        "Error code: 400 - {'error': 'context_length_exceeded'}",
+        response=response,
+        body=None,
+    )
+
+    session_state, _ = _run_setup_with_error(monkeypatch, exc)
+
+    assert session_state["error"] == "HTTP 400: {'error': 'context_length_exceeded'}"
+
+
+def test_overlong_error_text_is_truncated(monkeypatch):
+    session_state, _ = _run_setup_with_error(monkeypatch, RuntimeError("x" * 5000))
+
+    message = session_state["error"]
+    assert len(message) < 400
+    assert message.endswith("[…]")
+
+
 def test_retry_after_error_succeeds_without_reload(monkeypatch):
     """A second click in the same session (no reload) after a failed call
     must clear the error and generate the structure normally."""
@@ -449,6 +510,27 @@ def test_deck_generation_error_reverts_to_structure_phase(monkeypatch):
     assert session_state["phase"] == "structure"
     assert session_state["deck_html"] is None
     assert session_state["error"] == "boom"
+    assert session_state["error_scope"] == "deck_generation"
+
+
+def test_deck_generation_error_is_not_labelled_as_a_failed_change(monkeypatch):
+    """The failure drops back into the structure phase — where a fixed
+    "Änderung fehlgeschlagen" would name the wrong step."""
+    _fresh_state(monkeypatch, phase="deck", deck_html=None, structure_md="# Struktur")
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(error=RuntimeError("boom"))
+    )
+    phases.render_sidebar()
+
+    errors = []
+    _stub_chat_widgets(monkeypatch, [], errors=errors)
+    phases.render_sidebar()
+
+    assert errors == ["Deck-Generierung fehlgeschlagen: boom"]
 
 
 def _deck_generation_state(monkeypatch, deck_reply):

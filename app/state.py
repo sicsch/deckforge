@@ -27,6 +27,7 @@ DEFAULT_STATE = {
     "deck_history": [],
     "confirm_back_to_structure": False,
     "error": None,
+    "error_scope": None,
 }
 
 
