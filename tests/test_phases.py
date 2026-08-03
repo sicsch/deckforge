@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import openai
 import pytest
@@ -169,6 +171,15 @@ class _FakeUpload:
         return self._content
 
 
+def _stub_uploaders(monkeypatch, guideline=None, tokens=None):
+    """Route each `file_uploader` call to its own fake upload, by label."""
+    monkeypatch.setattr(
+        phases.st,
+        "file_uploader",
+        lambda label, *a, **k: tokens if "Tokens" in label else guideline,
+    )
+
+
 def test_guideline_upload_fills_state(monkeypatch):
     session_state = _fresh_state(monkeypatch, phase="setup")
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
@@ -176,11 +187,7 @@ def test_guideline_upload_fills_state(monkeypatch):
     monkeypatch.setattr(phases.st, "button", lambda *a, **k: False)
     monkeypatch.setattr(phases.st, "success", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "warning", lambda *a, **k: None)
-    monkeypatch.setattr(
-        phases.st,
-        "file_uploader",
-        lambda *a, **k: _FakeUpload("guideline.md", "# Guideline"),
-    )
+    _stub_uploaders(monkeypatch, guideline=_FakeUpload("guideline.md", "# Guideline"))
 
     phases.render_sidebar()
 
@@ -200,11 +207,7 @@ def test_guideline_reupload_overwrites_previous(monkeypatch):
     monkeypatch.setattr(phases.st, "button", lambda *a, **k: False)
     monkeypatch.setattr(phases.st, "success", lambda *a, **k: None)
     monkeypatch.setattr(phases.st, "warning", lambda *a, **k: None)
-    monkeypatch.setattr(
-        phases.st,
-        "file_uploader",
-        lambda *a, **k: _FakeUpload("new.md", "# New"),
-    )
+    _stub_uploaders(monkeypatch, guideline=_FakeUpload("new.md", "# New"))
 
     phases.render_sidebar()
 
@@ -391,6 +394,7 @@ def test_deck_phase_auto_generates_html_on_first_render(monkeypatch):
     assert path == phases.HTML_DECK_PROMPT
     assert replacements == {
         phases._GUIDELINE_PLACEHOLDER: "# Guideline",
+        phases._LAYOUT_CSS_PLACEHOLDER: phases._NO_LAYOUT_CSS,
         phases._STRUCTURE_BRIEFING_PLACEHOLDER: "# Struktur",
     }
     # Two calls: preflight plan first, then code with that plan in context.
@@ -888,6 +892,122 @@ def test_lint_report_stays_silent_for_a_compliant_deck(monkeypatch):
     phases._render_lint_report()
 
     assert successes == ["Design-Prüfung: keine Abweichungen von den Tokens gefunden."]
+
+
+_TOKENS_JSON = """{
+  "slide_width_cm": 33.87, "slide_height_cm": 19.05, "aspect_ratio": 1.778,
+  "theme_colors": {"dk1": "#111111", "lt1": "#FFFFFF", "accent1": "#1A73E8"},
+  "theme_fonts": {"heading_font": "Example Sans", "body_font": "Example Sans"},
+  "text_styles": {"title": [{"level": 1, "font_size_pt": 40.0,
+                             "color": "scheme:tx1", "align": "l", "font": null}],
+                  "body": [{"level": 1, "font_size_pt": 20.0,
+                            "color": "scheme:tx1", "align": "l", "font": null}]},
+  "master_background": {"fill": "solid", "color": "#FFFFFF"},
+  "layouts": [
+    {"master_index": 0, "layout_name": "Titel",
+     "background": {"fill": "inherited", "color": null},
+     "placeholders": [{"idx": 0, "type": "TITLE (1)", "type_name": "TITLE",
+                       "type_id": 1, "name": "Title 1", "left_cm": 3.39,
+                       "top_cm": 1.9, "width_cm": 27.1, "height_cm": 3.81}]},
+    {"master_index": 0, "layout_name": "Karteileiche",
+     "background": {"fill": "inherited", "color": null},
+     "placeholders": [{"idx": 0, "type": "BODY (2)", "type_name": "BODY",
+                       "type_id": 2, "name": "Body 1", "left_cm": 1.0,
+                       "top_cm": 1.0, "width_cm": 10.0, "height_cm": 5.0}]}
+  ]
+}"""
+
+
+def _stub_layout_widgets(monkeypatch, tokens_upload=None, selection=None):
+    _stub_uploaders(monkeypatch, tokens=tokens_upload)
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "subheader", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "success", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "warning", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "error", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "text_input", lambda label, value, **k: value)
+    monkeypatch.setattr(phases.st, "text_area", lambda label, value, **k: value)
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: False)
+    monkeypatch.setattr(
+        phases.st,
+        "multiselect",
+        lambda label, options, default, **k: (
+            default if selection is None else selection
+        ),
+    )
+
+
+def test_token_upload_preselects_every_layout(monkeypatch):
+    session_state = _fresh_state(monkeypatch, phase="setup")
+    _stub_layout_widgets(
+        monkeypatch, tokens_upload=_FakeUpload("pptx_design_tokens.json", _TOKENS_JSON)
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["tokens_name"] == "pptx_design_tokens.json"
+    assert session_state["selected_layouts"] == ["titel", "karteileiche"]
+
+
+def test_broken_token_file_reports_error_and_keeps_state(monkeypatch):
+    session_state = _fresh_state(monkeypatch, phase="setup")
+    _stub_layout_widgets(monkeypatch, tokens_upload=_FakeUpload("broken.json", "{nope"))
+    errors = []
+    monkeypatch.setattr(phases.st, "error", errors.append)
+
+    phases.render_sidebar()
+
+    assert session_state["tokens"] is None
+    assert session_state["tokens_name"] is None
+    assert any("nicht lesbar" in msg for msg in errors)
+
+
+def test_deselected_layout_reaches_neither_css_nor_catalog(monkeypatch):
+    _fresh_state(
+        monkeypatch,
+        phase="setup",
+        tokens=json.loads(_TOKENS_JSON),
+        tokens_name="t.json",
+        selected_layouts=["titel"],
+    )
+    _stub_layout_widgets(monkeypatch, selection=["titel"])
+
+    phases.render_sidebar()
+    css = phases._layout_css_block()
+    catalog = phases._layout_catalog()
+
+    assert ".layout-titel " in css
+    assert "layout-karteileiche" not in css
+    assert "Karteileiche" not in catalog
+    assert "Titel" in catalog
+
+
+def test_structure_prompt_carries_the_layout_catalog(monkeypatch):
+    _fresh_state(
+        monkeypatch,
+        phase="setup",
+        setup=_FILLED_SETUP,
+        tokens=json.loads(_TOKENS_JSON),
+        tokens_name="t.json",
+        selected_layouts=["titel"],
+    )
+    _stub_layout_widgets(monkeypatch, selection=["titel"])
+    monkeypatch.setattr(phases.st, "button", lambda *a, **k: True)
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    captured = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured.append(replacements) or "PROMPT",
+    )
+    monkeypatch.setattr(phases, "get_client", lambda: _FakeClient(result="# S"))
+
+    phases.render_sidebar()
+
+    catalog = captured[0][phases._LAYOUT_LIST_PLACEHOLDER]
+    assert "layout-titel" in catalog and "Karteileiche" not in catalog
 
 
 def test_phase_indicator_renders_no_widget(monkeypatch):

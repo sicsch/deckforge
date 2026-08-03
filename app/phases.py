@@ -1,8 +1,10 @@
 """Phase-dependent rendering and transitions for deckforge's Streamlit app."""
 
+import json
 import re
 from datetime import datetime
 
+import layout_css
 import lint
 import openai
 import streamlit as st
@@ -21,6 +23,18 @@ _CHANGE_REQUEST_PLACEHOLDER = "[HIER Änderungswunsch EINFÜGEN]"
 _DECK_HTML_PLACEHOLDER = "[HIER Aktuelles HTML-Deck EINFÜGEN]"
 _STRUCTURE_BRIEFING_PLACEHOLDER = (
     "[HIER Folienstruktur + HTML-Briefing aus Schritt 2 EINFÜGEN]"
+)
+_LAYOUT_LIST_PLACEHOLDER = "[HIER Verfügbare Folienlayouts EINFÜGEN]"
+_LAYOUT_CSS_PLACEHOLDER = (
+    "[HIER Layout-CSS und Layout-Liste aus dem Folienmaster EINFÜGEN]"
+)
+_NO_LAYOUTS = (
+    "Kein Folienmaster hinterlegt — es gibt keine Layout-Liste. "
+    "Richte dich allein nach den Folientypen der Design-Guideline."
+)
+_NO_LAYOUT_CSS = (
+    "Kein Folienmaster-CSS vorhanden — baue das Design-System selbst aus den "
+    "Tokens der Design-Guideline."
 )
 _PREFLIGHT_INSTRUCTION = (
     "Erzeuge Phase 1: den Preflight-Plan als Markdown. Noch kein HTML, "
@@ -139,6 +153,52 @@ def render_preview() -> None:
             st.code(deck_html, language="html")
 
 
+def _render_layout_selection() -> None:
+    """Upload of the extracted master tokens plus the layout opt-in.
+
+    Slide masters routinely carry unused layouts; only the ones ticked here
+    reach the prompts and the generated CSS (Issue #78).
+    """
+    uploaded = st.file_uploader(
+        "Design-Tokens des Folienmasters (JSON)",
+        type=["json"],
+        help="Output von `01-design-guideline/extract_pptx_theme.py`.",
+    )
+    if uploaded is not None and uploaded.name != st.session_state["tokens_name"]:
+        try:
+            tokens = json.loads(uploaded.getvalue().decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            st.error(f"Token-Datei nicht lesbar: {exc}")
+        else:
+            st.session_state["tokens"] = tokens
+            st.session_state["tokens_name"] = uploaded.name
+            st.session_state["selected_layouts"] = [
+                entry["slug"] for entry in layout_css.layouts(tokens)
+            ]
+            # Widget-State verwerfen, damit die neue Vorauswahl greift
+            st.session_state.pop("setup_layouts", None)
+
+    tokens = st.session_state["tokens"]
+    if not tokens:
+        return
+
+    entries = layout_css.layouts(tokens)
+    if not entries:
+        st.warning("Die Token-Datei enthält keine Folienlayouts.")
+        return
+
+    labels = {entry["slug"]: entry["name"] for entry in entries}
+    st.session_state["selected_layouts"] = st.multiselect(
+        "Erlaubte Folienlayouts",
+        options=list(labels),
+        default=st.session_state["selected_layouts"],
+        format_func=labels.get,
+        key="setup_layouts",
+    )
+    if not st.session_state["selected_layouts"]:
+        st.warning("Ohne ausgewähltes Layout entsteht kein Layout-CSS.")
+
+
 def _render_setup_sidebar() -> None:
     uploaded = st.file_uploader("Design-Guideline (Markdown)", type=["md"])
     if uploaded is not None:
@@ -170,6 +230,8 @@ def _render_setup_sidebar() -> None:
             )
         else:
             st.warning("Keine Folientyp-Überschriften gefunden.")
+
+    _render_layout_selection()
 
     st.subheader("Angaben zur Präsentation")
     setup = st.session_state["setup"]
@@ -213,6 +275,32 @@ def _render_setup_sidebar() -> None:
         st.error(f"Strukturgenerierung fehlgeschlagen: {st.session_state['error']}")
 
 
+def _layout_catalog() -> str:
+    """The master's layout list as prompt text, or the no-master fallback."""
+    tokens = st.session_state["tokens"]
+    if not tokens:
+        return _NO_LAYOUTS
+    return layout_css.catalog_markdown(tokens, st.session_state["selected_layouts"])
+
+
+def _layout_css_block() -> str:
+    """The generated `<style>` block plus its catalog, or the fallback.
+
+    Deterministic output of `layout_css` — the model receives it as a finished
+    block and is told not to touch it (Issue #78).
+    """
+    tokens = st.session_state["tokens"]
+    if not tokens:
+        return _NO_LAYOUT_CSS
+    selected = st.session_state["selected_layouts"]
+    return (
+        "Übernimm den folgenden <style>-Block wörtlich und unverändert in das "
+        "Deck:\n\n"
+        f"{layout_css.build_css(tokens, selected)}\n\n"
+        f"{layout_css.catalog_markdown(tokens, selected)}"
+    )
+
+
 def _generate_structure(setup: dict, guideline_md: str | None) -> str:
     """Fill the slide-architect prompt template and run it via the LLM client."""
     briefing = (
@@ -226,6 +314,7 @@ def _generate_structure(setup: dict, guideline_md: str | None) -> str:
         SLIDE_ARCHITECT_PROMPT,
         {
             _GUIDELINE_PLACEHOLDER: guideline_md or "",
+            _LAYOUT_LIST_PLACEHOLDER: _layout_catalog(),
             _BRIEFING_PLACEHOLDER: briefing,
         },
     )
@@ -268,6 +357,7 @@ def _generate_deck_html(
         HTML_DECK_PROMPT,
         {
             _GUIDELINE_PLACEHOLDER: guideline_md or "",
+            _LAYOUT_CSS_PLACEHOLDER: _layout_css_block(),
             _STRUCTURE_BRIEFING_PLACEHOLDER: structure_md,
         },
     )

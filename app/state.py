@@ -6,6 +6,9 @@ DEFAULT_STATE = {
     "phase": "setup",
     "guideline_md": None,
     "guideline_name": None,
+    "tokens": None,
+    "tokens_name": None,
+    "selected_layouts": [],
     "setup": {
         "thema": "",
         "zielgruppe": "",
