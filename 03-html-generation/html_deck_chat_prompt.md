@@ -25,6 +25,9 @@ Regeln:
   (kein komplettes Neu-Generieren des Decks von Grund auf)
 - Die @media-print-Regeln bleiben vollständig erhalten, außer der
   Änderungswunsch betrifft sie explizit
+- Die feste Foliengröße (`.slide` mit `width`, `height`, `overflow: hidden`)
+  und das Overflow-Markierungs-Script am Ende des <body> bleiben unverändert
+  erhalten, außer der Änderungswunsch betrifft sie explizit
 - Bestehende CSS-Variablen, Komponenten-Klassen und Folienstruktur bleiben
   konsistent — keine neuen Ad-hoc-Styles, wo vorhandene Komponenten reichen
 - Keine Rückfragen, keine Kommentare außerhalb des Dokuments — nur das
@@ -39,5 +42,3 @@ Regeln:
 
 Das vollständige, überarbeitete HTML-Dokument — ersetzt den bisherigen
 Stand aus Schritt 3.
-</content>
-</invoke>
