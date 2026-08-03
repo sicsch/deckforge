@@ -27,6 +27,7 @@ _STRUCTURE_BRIEFING_PLACEHOLDER = (
     "[HIER Folienstruktur + HTML-Briefing aus Schritt 2 EINFÜGEN]"
 )
 _LAYOUT_LIST_PLACEHOLDER = "[HIER Verfügbare Folienlayouts EINFÜGEN]"
+_SLIDE_TYPES_PLACEHOLDER = "[HIER Folientypen der Guideline EINFÜGEN]"
 _LAYOUT_CSS_PLACEHOLDER = (
     "[HIER Layout-CSS und Layout-Liste aus dem Folienmaster EINFÜGEN]"
 )
@@ -243,6 +244,7 @@ def _render_setup_sidebar() -> None:
             mime="text/markdown",
         )
         tokens, slide_types = _validate_guideline(st.session_state["guideline_md"])
+        st.session_state["slide_types"] = slide_types
         if tokens:
             st.success(f"{len(tokens)} CSS-Tokens erkannt: {', '.join(tokens)}")
         else:
@@ -349,18 +351,33 @@ def _generate_structure(setup: dict, guideline_md: str | None) -> str:
     )
 
 
-def _generate_structure_iteration(structure_md: str, change_request: str) -> str:
+def _slide_type_hint(slide_types: list[str]) -> str:
+    """The guideline's slide types as one prompt line, empty without any.
+
+    Only the names travel, not the guideline itself (#86) — a change request
+    like "füg eine Vergleichsfolie ein" otherwise leaves the model guessing
+    which types have CSS behind them.
+    """
+    if not slide_types:
+        return ""
+    return f"Folientypen der Design-Guideline: {', '.join(slide_types)}"
+
+
+def _generate_structure_iteration(
+    structure_md: str, change_request: str, slide_types: list[str]
+) -> str:
     """Fill the chat-iteration prompt with the current structure and run it.
 
-    Only the current `structure_md` and the latest change request go into the
-    prompt — never the full chat history (Kontextfenster-Disziplin, siehe
-    CLAUDE.md).
+    Only the current `structure_md`, the latest change request and the
+    guideline's slide types go into the prompt — never the full chat history
+    (Kontextfenster-Disziplin, siehe CLAUDE.md).
     """
     prompt = load_prompt(
         STRUCTURE_CHAT_PROMPT,
         {
             _STRUCTURE_PLACEHOLDER: structure_md,
             _CHANGE_REQUEST_PLACEHOLDER: change_request,
+            _SLIDE_TYPES_PLACEHOLDER: _slide_type_hint(slide_types),
         },
     )
     return get_client().complete(prompt, [{"role": "user", "content": change_request}])
@@ -459,7 +476,9 @@ def _render_structure_sidebar() -> None:
         with st.spinner("Struktur wird aktualisiert..."):
             try:
                 structure_md = _generate_structure_iteration(
-                    st.session_state["structure_md"], change_request
+                    st.session_state["structure_md"],
+                    change_request,
+                    st.session_state["slide_types"],
                 )
             except Exception as exc:
                 st.session_state["error"] = _describe_llm_error(exc)

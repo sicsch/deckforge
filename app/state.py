@@ -6,6 +6,7 @@ DEFAULT_STATE = {
     "phase": "setup",
     "guideline_md": None,
     "guideline_name": None,
+    "slide_types": [],
     "tokens": None,
     "tokens_name": None,
     "selected_layouts": [],
