@@ -6,16 +6,23 @@ Benötigt: pip install pymupdf
 
 Aufruf:
     python extract_pdf_design.py "Geschaeftsbericht.pdf"
+    python extract_pdf_design.py "Geschaeftsbericht.pdf" --render-pages 8
 
 Output:
     pdf_design_tokens.json  (im selben Ordner)
+    pdf_pages/page-NN.png   (nur mit --render-pages)
 """
 
+import argparse
 import json
-import sys
 from collections import Counter
+from pathlib import Path
 
 import fitz  # PyMuPDF
+
+# ~144 dpi bei A4 — genug, um Raster und Weißraum zu erkennen, ohne dass die
+# Bilder zu groß für den Upload in einen Chatbot werden.
+_RENDER_ZOOM = 2.0
 
 
 def rgb_int_to_hex(color_int: int) -> str:
@@ -89,19 +96,63 @@ def extract(pdf_path: str, max_pages: int = 40):
     return result
 
 
+def render_pages(pdf_path: str, count: int, out_dir: str) -> list[Path]:
+    """Write the first `count` pages as PNG.
+
+    The token JSON holds frequencies, not design: no grid, no white space, no
+    components, no image language. The guideline prompt (Schritt 1) needs the
+    pages themselves for that — this writes them in a form that can be
+    attached to a chat.
+    """
+    doc = fitz.open(pdf_path)
+    directory = Path(out_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    matrix = fitz.Matrix(_RENDER_ZOOM, _RENDER_ZOOM)
+
+    written = []
+    for index in range(min(count, len(doc))):
+        target = directory / f"page-{index + 1:02d}.png"
+        doc[index].get_pixmap(matrix=matrix).save(target)
+        written.append(target)
+    return written
+
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python extract_pdf_design.py <pdf-datei> [max_pages]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Design-Tokens aus einem PDF extrahieren."
+    )
+    parser.add_argument("pdf", help="Pfad zur PDF-Datei")
+    parser.add_argument(
+        "max_pages",
+        nargs="?",
+        type=int,
+        default=40,
+        help="Wie viele Seiten analysiert werden (Standard: 40)",
+    )
+    parser.add_argument(
+        "--render-pages",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Die ersten N Seiten zusätzlich als PNG ablegen, "
+        "um sie dem Synthese-Prompt als Designreferenz mitzugeben",
+    )
+    parser.add_argument(
+        "--render-dir",
+        default="pdf_pages",
+        help="Zielordner für die Seitenbilder (Standard: pdf_pages)",
+    )
+    args = parser.parse_args()
 
-    pdf_path = sys.argv[1]
-    max_pages = int(sys.argv[2]) if len(sys.argv) > 2 else 40
-
-    data = extract(pdf_path, max_pages)
+    data = extract(args.pdf, args.max_pages)
 
     out_path = "pdf_design_tokens.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+    if args.render_pages:
+        pages = render_pages(args.pdf, args.render_pages, args.render_dir)
+        print(f"{len(pages)} Seitenbilder geschrieben nach: {args.render_dir}/")
 
     print(f"Fertig. Ergebnis geschrieben nach: {out_path}")
     print(f"Analysierte Seiten: {data['pages_analyzed']}")

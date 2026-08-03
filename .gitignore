@@ -3,6 +3,9 @@
 pdf_design_tokens.json
 pptx_design_tokens.json
 
+# Seitenbilder der Designreferenz (--render-pages)
+pdf_pages/
+
 # Quelldateien (nicht öffentlich teilen)
 *.pdf
 *.pptx

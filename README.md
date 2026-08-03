@@ -16,7 +16,7 @@ bereitstellst — für jede Organisation, jedes Design.
 
 | Schritt | Was passiert | Ergebnis |
 |---|---|---|
-| **1. Guideline** | Design-Tokens aus PDF-Referenzdokumenten und PowerPoint-Folienmastern extrahieren, zu einer Guideline zusammenführen | `guideline.md` mit CSS-Tokens |
+| **1. Guideline** | Design-Tokens aus Folienmaster und Referenzdokument extrahieren und zusammen mit der Referenz selbst zu einer Guideline verdichten | `guideline.md` mit CSS-Tokens |
 | **2. Struktur** | Aus Thema, Zielgruppe und Inhalten eine Dramaturgie und Folienarchitektur ableiten | `structure.md` |
 | **3. Deck** | Aus Guideline + Struktur ein HTML/CSS-Deck generieren, iterativ verfeinern | `deck.html` |
 | **4. Export** | HTML-Deck als PDF rendern | `deck.pdf` |
@@ -54,10 +54,10 @@ Für die App zusätzlich `.env` anlegen (Vorlage: `.env.example`).
 
 ```bash
 # Schritt 1 — Design-Tokens extrahieren
-uv run 01-design-guideline/extract_pdf_design.py referenz.pdf
+uv run 01-design-guideline/extract_pdf_design.py referenz.pdf --render-pages 8
 uv run 01-design-guideline/extract_pptx_theme.py folienmaster.potx
-# beide JSON-Outputs + synthesis_prompt.md in einen Chatbot geben
-# → guideline.md
+# Seitenbilder + beide JSON-Outputs + synthesis_prompt.md in einen Chatbot
+# geben, der Bilder lesen kann → guideline.md
 
 # Schritt 2 — Folienstruktur
 # slide_architect_prompt.md + guideline.md + Thema/Zielgruppe in Chatbot
