@@ -42,6 +42,12 @@ Folienmaster enthalten regelmäßig ungenutzte Karteileichen. Ohne Token-JSON
 bleibt das Verhalten wie bisher: das Modell baut das Layout-CSS selbst aus
 der Guideline.
 
+Bei Deck-Iterationen wird der Block gar nicht erst mitgeschickt:
+`split_master_css()` schneidet ihn heraus und hinterlässt den Kommentar
+`<!-- FOLIENMASTER-CSS: unverändert übernehmen -->`, `restore_master_css()`
+setzt ihn danach an derselben Stelle wieder ein. Das spart Kontext pro Runde
+und macht Drift am Layout-CSS über mehrere Runden unmöglich.
+
 ## Provider-Wechsel
 
 Der LLM-Zugriff läuft über eine schmale Provider-Abstraktion

@@ -1,6 +1,7 @@
 import json
 
 import httpx
+import layout_css
 import openai
 import pytest
 
@@ -670,6 +671,42 @@ def test_deck_chat_error_keeps_previous_deck_and_history(monkeypatch):
     assert session_state["deck_history"] == []
     assert session_state["error"] == "boom"
     assert any("boom" in msg for msg in errors)
+
+
+def test_deck_chat_hides_master_css_from_the_model_and_restores_it(monkeypatch):
+    """Issue #79: der generierte Block geht nicht raus und kommt unveraendert
+    zurueck, selbst wenn das Modell an seiner Stelle CSS schreiben will."""
+    master_block = (
+        f"<style>\n{layout_css.MASTER_CSS_MARKER}\n"
+        ".slide { width: var(--slide-width); }\n</style>"
+    )
+    original = f"<html><head>{master_block}</head><body>v1</body></html>"
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html=original, deck_chat=[]
+    )
+    _stub_chat_widgets(monkeypatch, ["Headline groesser"])
+    captured = []
+    monkeypatch.setattr(
+        phases,
+        "load_prompt",
+        lambda path, replacements: captured.append(replacements) or "PROMPT",
+    )
+    # Modell ersetzt den Platzhalter durch eigenes Positionierungs-CSS
+    answer = (
+        "<html><head><style>.slide { width: 1280px; }</style></head>"
+        "<body>v2</body></html>"
+    )
+    monkeypatch.setattr(phases, "get_client", lambda: _FakeClient(result=answer))
+
+    phases.render_sidebar()
+
+    sent = captured[0][phases._DECK_HTML_PLACEHOLDER]
+    assert layout_css.MASTER_CSS_MARKER not in sent
+    assert layout_css.MASTER_CSS_PLACEHOLDER in sent
+
+    deck_html = session_state["deck_html"]
+    assert master_block in deck_html
+    assert "v2" in deck_html
 
 
 def test_deck_chat_preserves_print_css_rules(monkeypatch):

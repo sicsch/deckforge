@@ -380,16 +380,21 @@ def _generate_deck_html_iteration(deck_html: str, change_request: str) -> str:
 
     Only the current `deck_html` and the latest change request go into the
     prompt — never the full chat history (Kontextfenster-Disziplin, siehe
-    CLAUDE.md).
+    CLAUDE.md). The generated master CSS is cut out beforehand and put back
+    afterwards: it costs context on every round and must not drift (#79).
     """
+    stripped_html, master_css = layout_css.split_master_css(deck_html)
     prompt = load_prompt(
         HTML_DECK_CHAT_PROMPT,
         {
-            _DECK_HTML_PLACEHOLDER: deck_html,
+            _DECK_HTML_PLACEHOLDER: stripped_html,
             _CHANGE_REQUEST_PLACEHOLDER: change_request,
         },
     )
-    return get_client().complete(prompt, [{"role": "user", "content": change_request}])
+    updated = get_client().complete(
+        prompt, [{"role": "user", "content": change_request}]
+    )
+    return layout_css.restore_master_css(updated, master_css)
 
 
 def _render_structure_sidebar() -> None:

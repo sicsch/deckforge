@@ -84,6 +84,18 @@ COMPONENT_CSS = """/* Komponenten — nur innerhalb eines Platzhalters (.ph) wir
 }
 .ph .quote-source { font-size: var(--body-size-2, var(--body-size-1, inherit)); }"""
 
+# Marker line of the generated block, used both when writing it and when
+# finding it again in a deck that came back from the model.
+MASTER_CSS_MARKER = "/* Automatisch aus dem Folienmaster erzeugt — nicht verändern. */"
+
+# What the model sees instead of the block during an iteration. Sending the
+# block costs context on every round and invites edits to it (Issue #79).
+MASTER_CSS_PLACEHOLDER = "<!-- FOLIENMASTER-CSS: unverändert übernehmen -->"
+
+_MASTER_CSS_RE = re.compile(
+    r"<style>\s*/\* Automatisch aus dem Folienmaster erzeugt.*?</style>", re.DOTALL
+)
+
 COMPONENT_CLASSES = (
     "cards",
     "card",
@@ -315,7 +327,7 @@ def build_css(tokens: dict, selected: list[str] | None = None) -> str:
     catalog = layouts(tokens, selected)
     blocks = [
         "<style>",
-        "/* Automatisch aus dem Folienmaster erzeugt — nicht verändern. */",
+        MASTER_CSS_MARKER,
         _root_block(tokens),
         "",
         _base_block(tokens),
@@ -336,6 +348,40 @@ def build_css(tokens: dict, selected: list[str] | None = None) -> str:
 
     blocks += ["", COMPONENT_CSS, "</style>"]
     return "\n".join(blocks)
+
+
+def split_master_css(deck_html: str) -> tuple[str, str]:
+    """Cut the generated block out of a deck, leaving a placeholder comment.
+
+    Returns `(deck_without_block, block)`. A deck built without a slide master
+    has no block — then the html comes back unchanged and the block is empty.
+    """
+    match = _MASTER_CSS_RE.search(deck_html or "")
+    if not match:
+        return deck_html, ""
+    stripped = (
+        deck_html[: match.start()] + MASTER_CSS_PLACEHOLDER + deck_html[match.end() :]
+    )
+    return stripped, match.group()
+
+
+def restore_master_css(deck_html: str, block: str) -> str:
+    """Put the generated block back where the placeholder comment sits.
+
+    The model is told to keep the comment in place; if it dropped it anyway,
+    the block goes in before `</head>` (or at the front) rather than being
+    lost — a deck without its master CSS has no layout at all.
+    """
+    if not block:
+        return deck_html
+    if MASTER_CSS_PLACEHOLDER in deck_html:
+        return deck_html.replace(MASTER_CSS_PLACEHOLDER, block, 1)
+    if _MASTER_CSS_RE.search(deck_html):
+        # Model reproduced a block of its own — replace it with the original.
+        return _MASTER_CSS_RE.sub(lambda _: block, deck_html, count=1)
+    if "</head>" in deck_html:
+        return deck_html.replace("</head>", f"{block}\n</head>", 1)
+    return f"{block}\n{deck_html}"
 
 
 def catalog_markdown(tokens: dict, selected: list[str] | None = None) -> str:
