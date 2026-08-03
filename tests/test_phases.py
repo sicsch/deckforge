@@ -226,7 +226,7 @@ def test_guideline_with_tokens_and_headings_reports_detection(monkeypatch):
         "## Titelfolie\n\n"
         "### Inhaltsfolie\n"
     )
-    _fresh_state(
+    session_state = _fresh_state(
         monkeypatch, phase="setup", guideline_md=guideline, guideline_name="g.md"
     )
     monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
@@ -243,6 +243,8 @@ def test_guideline_with_tokens_and_headings_reports_detection(monkeypatch):
     assert not warnings
     assert any("--color-primary" in msg for msg in successes)
     assert any("Titelfolie" in msg for msg in successes)
+    # the detected types stay available for the structure iteration (#86)
+    assert session_state["slide_types"] == ["Titelfolie", "Inhaltsfolie"]
 
 
 def test_unstructured_guideline_triggers_warning_but_does_not_block(monkeypatch):
@@ -552,9 +554,54 @@ def test_structure_chat_iteration_updates_structure_and_logs_chat(monkeypatch):
     assert captured_replacements[0] == {
         phases._STRUCTURE_PLACEHOLDER: "# Alte Struktur",
         phases._CHANGE_REQUEST_PLACEHOLDER: "Ändere Folie 3",
+        phases._SLIDE_TYPES_PLACEHOLDER: "",
     }
     system_prompt, messages = fake_client.calls[0]
     assert messages == [{"role": "user", "content": "Ändere Folie 3"}]
+
+
+def _run_structure_iteration_with_real_template(monkeypatch, slide_types):
+    """One structure iteration through the real prompt template — returns the
+    system prompt that reached the client. Unstubbed `load_prompt` on purpose,
+    so template and code can't drift apart on the new placeholder (#86)."""
+    _fresh_state(
+        monkeypatch,
+        phase="structure",
+        structure_md="# Alte Struktur",
+        structure_chat=[],
+        slide_types=slide_types,
+    )
+    _stub_chat_widgets(monkeypatch, ["Füg eine Vergleichsfolie ein"])
+    fake_client = _FakeClient(result="# Neue Struktur")
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    phases.render_sidebar()
+
+    return fake_client.calls[0][0]
+
+
+def test_structure_iteration_prompt_carries_guideline_slide_types(monkeypatch):
+    prompt = _run_structure_iteration_with_real_template(
+        monkeypatch, ["Titelfolie", "Vergleichsfolie"]
+    )
+
+    assert "Titelfolie, Vergleichsfolie" in prompt
+    assert "# Alte Struktur" in prompt
+    assert "[HIER" not in prompt
+
+
+def test_structure_iteration_without_slide_types_leaves_prompt_unchanged(monkeypatch):
+    with_types = _run_structure_iteration_with_real_template(
+        monkeypatch, ["Titelfolie"]
+    )
+    without_types = _run_structure_iteration_with_real_template(monkeypatch, [])
+
+    assert "Folientypen der Design-Guideline" not in without_types
+    assert "[HIER" not in without_types
+    # the extra context is the type line and nothing else
+    assert without_types == with_types.replace(
+        "Folientypen der Design-Guideline: Titelfolie", ""
+    )
 
 
 def test_structure_chat_three_consecutive_iterations_no_context_loss(monkeypatch):

@@ -10,6 +10,9 @@ siehe CLAUDE.md).
 
 - **Aktuelle Folienstruktur**: der bisherige Stand aus Schritt 2
 - **Änderungswunsch**: die Freitext-Nachricht des Nutzers aus dem Chat
+- **Folientypen der Guideline**: die beim Upload erkannten Folientypen — nur
+  die Namen, nicht die Guideline selbst. Ohne erkannte Typen bleibt die Zeile
+  leer und es gilt allein die Regel zur bestehenden Struktur.
 
 ## Prompt
 
@@ -25,6 +28,10 @@ Regeln:
 - Ändere nur, was der Änderungswunsch verlangt — der Rest bleibt erhalten
 - Nutze weiterhin ausschließlich Folientypen aus der ursprünglichen Struktur,
   außer der Änderungswunsch verlangt explizit einen neuen
+- Verlangt der Änderungswunsch einen neuen Folientyp, wähle ihn aus der
+  folgenden Liste. Ist die Liste leer, bleibt es bei den Typen der
+  bestehenden Struktur.
+  [HIER Folientypen der Guideline EINFÜGEN]
 - Die Folientabelle behält je Folie Headline (max. 60 Zeichen) und 3-5 Bullets
   (je max. 90 Zeichen) als fertigen Endtext. Auch neu entstehende Folien
   bekommen fertige Texte, keine Beschreibungen.
