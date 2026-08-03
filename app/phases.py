@@ -86,6 +86,30 @@ PHASE_LABELS = {
 }
 
 _HEADING_RE = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
+_FENCE_RE = re.compile(r"```(?:html)?[^\n]*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+_HTML_ROOT_RE = re.compile(r"<(?:html|section)\b", re.IGNORECASE)
+
+
+def _clean_deck_html(answer: str) -> str:
+    """Unwrap a fenced model answer and refuse anything that isn't a deck.
+
+    The prompt asks for the bare HTML document; a model that wraps it in a
+    ```html block or prefixes it with prose would otherwise end up in the
+    preview, the download and the PDF verbatim (#85). An answer without an
+    HTML root element is a failure, not a deck — raising here routes it
+    through the existing error display.
+    """
+    text = (answer or "").strip()
+    if not text.startswith("<"):
+        match = _FENCE_RE.search(text)
+        if match:
+            text = match.group(1).strip()
+    if not _HTML_ROOT_RE.search(text):
+        raise ValueError(
+            "Die Antwort des Modells enthält kein HTML-Dokument. "
+            "Bitte erneut versuchen."
+        )
+    return text
 
 
 def _validate_guideline(markdown: str) -> tuple[list[str], list[str]]:
@@ -374,7 +398,7 @@ def _generate_deck_html(
             {"role": "user", "content": _CODE_INSTRUCTION},
         ],
     )
-    return plan, deck_html
+    return plan, _clean_deck_html(deck_html)
 
 
 def _generate_deck_html_iteration(deck_html: str, change_request: str) -> str:
@@ -396,7 +420,7 @@ def _generate_deck_html_iteration(deck_html: str, change_request: str) -> str:
     updated = get_client().complete(
         prompt, [{"role": "user", "content": change_request}]
     )
-    return layout_css.restore_master_css(updated, master_css)
+    return layout_css.restore_master_css(_clean_deck_html(updated), master_css)
 
 
 def _generate_deck_css_iteration(deck_html: str, change_request: str) -> str:

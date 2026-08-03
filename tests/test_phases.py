@@ -449,6 +449,59 @@ def test_deck_generation_error_reverts_to_structure_phase(monkeypatch):
     assert session_state["error"] == "boom"
 
 
+def _deck_generation_state(monkeypatch, deck_reply):
+    """Deck phase about to auto-generate, with the model answering `deck_reply`."""
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html=None, structure_md="# Struktur"
+    )
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    fake_client = _FakeClient()
+    replies = ["# Preflight-Plan", deck_reply]
+    fake_client.complete = lambda system, messages: (
+        fake_client.calls.append((system, messages))
+        or replies[len(fake_client.calls) - 1]
+    )
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+    return session_state
+
+
+def test_fenced_generation_answer_is_unwrapped_before_it_becomes_the_deck(monkeypatch):
+    session_state = _deck_generation_state(
+        monkeypatch, "```html\n<html>Deck</html>\n```"
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Deck</html>"
+    assert session_state["error"] is None
+
+
+def test_generation_answer_with_prose_before_the_fence_is_unwrapped(monkeypatch):
+    session_state = _deck_generation_state(
+        monkeypatch, "Gern, hier das Deck:\n\n```html\n<html>Deck</html>\n```\n"
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Deck</html>"
+
+
+def test_generation_answer_without_html_root_errors_instead_of_downloading(monkeypatch):
+    session_state = _deck_generation_state(
+        monkeypatch, "Ich brauche mehr Informationen zur Zielgruppe."
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] is None
+    assert "kein HTML-Dokument" in session_state["error"]
+    assert session_state["phase"] == "structure"
+
+
 def _stub_chat_widgets(monkeypatch, chat_inputs, errors=None, css_only=False):
     """Stub chat_input to return each value from `chat_inputs` in turn (None
     after exhaustion), plus the other widgets `_render_structure_sidebar`
@@ -595,6 +648,51 @@ def test_deck_chat_iteration_updates_deck_and_logs_chat(monkeypatch):
     assert messages == [
         {"role": "user", "content": "Abstand unter der Headline zu groß"}
     ]
+
+
+def test_fenced_iteration_answer_is_unwrapped(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html="<html>Alt</html>",
+        deck_chat=[],
+        deck_history=[],
+    )
+    _stub_chat_widgets(monkeypatch, ["Mehr Weißraum"])
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(
+        phases,
+        "get_client",
+        lambda: _FakeClient(result="```html\n<html>Neu</html>\n```"),
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Neu</html>"
+    assert session_state["error"] is None
+
+
+def test_iteration_answer_without_html_root_keeps_previous_deck(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html="<html>Alt</html>",
+        deck_chat=[],
+        deck_history=[],
+    )
+    errors = []
+    _stub_chat_widgets(monkeypatch, ["Mehr Weißraum"], errors=errors)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+    monkeypatch.setattr(
+        phases, "get_client", lambda: _FakeClient(result="Was genau meinst du?")
+    )
+
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Alt</html>"
+    assert session_state["deck_history"] == []
+    assert "kein HTML-Dokument" in session_state["error"]
+    assert any("kein HTML-Dokument" in msg for msg in errors)
 
 
 def test_deck_chat_three_consecutive_iterations_no_context_loss(monkeypatch):
@@ -992,12 +1090,14 @@ def test_lint_report_can_be_sent_back_as_change_request(monkeypatch):
         lambda path, replacements: captured.append(replacements) or "PROMPT",
     )
     monkeypatch.setattr(
-        phases, "get_client", lambda: _FakeClient(result="<p>fixed</p>")
+        phases,
+        "get_client",
+        lambda: _FakeClient(result='<section class="slide">fixed</section>'),
     )
 
     phases._render_lint_report()
 
-    assert session_state["deck_html"] == "<p>fixed</p>"
+    assert session_state["deck_html"] == '<section class="slide">fixed</section>'
     assert "#ff0000" in captured[0][phases._CHANGE_REQUEST_PLACEHOLDER]
     assert session_state["deck_history"][0]["html"] == _LINT_DECK
 
