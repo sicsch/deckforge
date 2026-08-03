@@ -3,6 +3,7 @@
 import re
 from datetime import datetime
 
+import lint
 import openai
 import streamlit as st
 from export import pdf
@@ -65,8 +66,6 @@ PHASE_LABELS = {
     "deck": "Deck",
 }
 
-_ROOT_BLOCK_RE = re.compile(r":root\s*\{([^}]*)\}", re.DOTALL)
-_CSS_VAR_RE = re.compile(r"(--[\w-]+)\s*:")
 _HEADING_RE = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
 
 
@@ -76,9 +75,7 @@ def _validate_guideline(markdown: str) -> tuple[list[str], list[str]]:
     Informational only — never raises, an unstructured file just yields
     empty lists.
     """
-    tokens = []
-    for block in _ROOT_BLOCK_RE.findall(markdown):
-        tokens.extend(_CSS_VAR_RE.findall(block))
+    tokens = list(lint.guideline_tokens(markdown))
     slide_types = _HEADING_RE.findall(markdown)
     return tokens, slide_types
 
@@ -368,6 +365,49 @@ def _render_pdf_export() -> None:
         )
 
 
+def _apply_deck_change(change_request: str) -> None:
+    """Run one deck iteration and record it in chat + version history."""
+    st.session_state["deck_chat"].append({"role": "user", "content": change_request})
+    with st.spinner("Deck wird aktualisiert..."):
+        try:
+            deck_html = _generate_deck_html_iteration(
+                st.session_state["deck_html"], change_request
+            )
+        except Exception as exc:
+            st.session_state["error"] = _describe_llm_error(exc)
+        else:
+            st.session_state["deck_history"].append(
+                {
+                    "label": change_request[:60],
+                    "html": st.session_state["deck_html"],
+                    "timestamp": datetime.now().isoformat(timespec="seconds"),
+                }
+            )
+            st.session_state["deck_html"] = deck_html
+            st.session_state["deck_pdf"] = None
+            st.session_state["error"] = None
+            st.session_state["deck_chat"].append(
+                {"role": "assistant", "content": "Deck aktualisiert."}
+            )
+
+
+def _render_lint_report() -> None:
+    """Show the deterministic token check and offer to feed it back to the model."""
+    findings = lint.lint_deck(
+        st.session_state["deck_html"] or "", st.session_state["guideline_md"]
+    )
+    if not findings:
+        st.success("Design-Prüfung: keine Abweichungen von den Tokens gefunden.")
+        return
+
+    with st.expander(f"Design-Prüfung: {len(findings)} Abweichungen", expanded=True):
+        for finding in findings:
+            st.write(f"- {finding}")
+        if st.button("Befund an das Modell zurückgeben"):
+            _apply_deck_change(lint.format_report(findings))
+            st.rerun()
+
+
 def _render_deck_sidebar() -> None:
     if st.session_state["deck_html"] is None:
         with st.spinner("Deck wird generiert..."):
@@ -390,34 +430,13 @@ def _render_deck_sidebar() -> None:
 
     change_request = st.chat_input("Änderungswunsch zum Deck")
     if change_request:
-        st.session_state["deck_chat"].append(
-            {"role": "user", "content": change_request}
-        )
-        with st.spinner("Deck wird aktualisiert..."):
-            try:
-                deck_html = _generate_deck_html_iteration(
-                    st.session_state["deck_html"], change_request
-                )
-            except Exception as exc:
-                st.session_state["error"] = _describe_llm_error(exc)
-            else:
-                st.session_state["deck_history"].append(
-                    {
-                        "label": change_request[:60],
-                        "html": st.session_state["deck_html"],
-                        "timestamp": datetime.now().isoformat(timespec="seconds"),
-                    }
-                )
-                st.session_state["deck_html"] = deck_html
-                st.session_state["deck_pdf"] = None
-                st.session_state["error"] = None
-                st.session_state["deck_chat"].append(
-                    {"role": "assistant", "content": "Deck aktualisiert."}
-                )
+        _apply_deck_change(change_request)
         st.rerun()
 
     if st.session_state["error"]:
         st.error(f"Änderung fehlgeschlagen: {st.session_state['error']}")
+
+    _render_lint_report()
 
     if st.session_state["deck_history"]:
         with st.expander("Versionshistorie"):
