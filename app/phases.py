@@ -22,11 +22,14 @@ _DECK_HTML_PLACEHOLDER = "[HIER Aktuelles HTML-Deck EINFÜGEN]"
 _STRUCTURE_BRIEFING_PLACEHOLDER = (
     "[HIER Folienstruktur + HTML-Briefing aus Schritt 2 EINFÜGEN]"
 )
-_HTML_GENERATION_INSTRUCTION = (
-    "Erzeuge das vollständige HTML-Deck. Führe Preflight-Plan und Code-Phase "
-    "direkt nacheinander aus, ohne auf eine Bestätigung zu warten. Gib "
-    "ausschließlich das vollständige, in sich valide HTML-Dokument zurück — "
-    "keinen Preflight-Plan, keine Erklärungen."
+_PREFLIGHT_INSTRUCTION = (
+    "Erzeuge Phase 1: den Preflight-Plan als Markdown. Noch kein HTML, "
+    "noch kein CSS."
+)
+_CODE_INSTRUCTION = (
+    "Der Plan ist bestätigt. Erzeuge Phase 2: das vollständige HTML-Deck "
+    "nach diesem Plan. Gib ausschließlich das in sich valide HTML-Dokument "
+    "zurück — keinen Plan, keine Erklärungen."
 )
 
 _ROHINHALTE_HELP = (
@@ -248,8 +251,19 @@ def _generate_structure_iteration(structure_md: str, change_request: str) -> str
     return get_client().complete(prompt, [{"role": "user", "content": change_request}])
 
 
-def _generate_deck_html(structure_md: str, guideline_md: str | None) -> str:
-    """Fill the HTML-deck prompt with guideline + confirmed structure and run it."""
+def _generate_deck_html(
+    structure_md: str, guideline_md: str | None
+) -> tuple[str, str]:
+    """Fill the HTML-deck prompt with guideline + confirmed structure and run it.
+
+    Two calls, matching the two phases the prompt template describes: the
+    preflight plan first, then the code with that plan in context. The plan
+    is fed back as an assistant turn, so the guideline and the structure are
+    sent once per call rather than repeated inside a single prompt.
+
+    Returns `(preflight_plan, deck_html)` — the plan names the layout risks
+    the model saw, which is worth showing rather than discarding.
+    """
     prompt = load_prompt(
         HTML_DECK_PROMPT,
         {
@@ -257,9 +271,18 @@ def _generate_deck_html(structure_md: str, guideline_md: str | None) -> str:
             _STRUCTURE_BRIEFING_PLACEHOLDER: structure_md,
         },
     )
-    return get_client().complete(
-        prompt, [{"role": "user", "content": _HTML_GENERATION_INSTRUCTION}]
+    client = get_client()
+    preflight = [{"role": "user", "content": _PREFLIGHT_INSTRUCTION}]
+    plan = client.complete(prompt, preflight)
+    deck_html = client.complete(
+        prompt,
+        [
+            *preflight,
+            {"role": "assistant", "content": plan},
+            {"role": "user", "content": _CODE_INSTRUCTION},
+        ],
     )
+    return plan, deck_html
 
 
 def _generate_deck_html_iteration(deck_html: str, change_request: str) -> str:
@@ -410,9 +433,9 @@ def _render_lint_report() -> None:
 
 def _render_deck_sidebar() -> None:
     if st.session_state["deck_html"] is None:
-        with st.spinner("Deck wird generiert..."):
+        with st.spinner("Deck wird generiert (erst Preflight-Plan, dann Code)..."):
             try:
-                deck_html = _generate_deck_html(
+                preflight, deck_html = _generate_deck_html(
                     st.session_state["structure_md"], st.session_state["guideline_md"]
                 )
             except Exception as exc:
@@ -420,6 +443,7 @@ def _render_deck_sidebar() -> None:
                 st.session_state["phase"] = "structure"
                 st.rerun()
             else:
+                st.session_state["deck_preflight"] = preflight
                 st.session_state["deck_html"] = deck_html
                 st.session_state["deck_pdf"] = None
                 st.session_state["error"] = None
@@ -437,6 +461,10 @@ def _render_deck_sidebar() -> None:
         st.error(f"Änderung fehlgeschlagen: {st.session_state['error']}")
 
     _render_lint_report()
+
+    if st.session_state["deck_preflight"]:
+        with st.expander("Preflight-Plan (Komponenten und Layout-Risiken)"):
+            st.markdown(st.session_state["deck_preflight"])
 
     if st.session_state["deck_history"]:
         with st.expander("Versionshistorie"):
@@ -465,6 +493,7 @@ def _render_deck_sidebar() -> None:
         if st.button("Ja, zurück zur Struktur", type="primary"):
             st.session_state["deck_html"] = None
             st.session_state["deck_pdf"] = None
+            st.session_state["deck_preflight"] = None
             st.session_state["deck_chat"] = []
             st.session_state["deck_history"] = []
             st.session_state["confirm_back_to_structure"] = False

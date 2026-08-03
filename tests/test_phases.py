@@ -373,12 +373,18 @@ def test_deck_phase_auto_generates_html_on_first_render(monkeypatch):
         lambda path, replacements: captured_replacements.append((path, replacements))
         or "PROMPT",
     )
-    fake_client = _FakeClient(result="<html>Deck</html>")
+    fake_client = _FakeClient()
+    replies = ["# Preflight-Plan", "<html>Deck</html>"]
+    fake_client.complete = lambda system, messages: (
+        fake_client.calls.append((system, messages))
+        or replies[len(fake_client.calls) - 1]
+    )
     monkeypatch.setattr(phases, "get_client", lambda: fake_client)
 
     phases.render_sidebar()
 
     assert session_state["deck_html"] == "<html>Deck</html>"
+    assert session_state["deck_preflight"] == "# Preflight-Plan"
     assert session_state["error"] is None
     assert session_state["phase"] == "deck"
     path, replacements = captured_replacements[0]
@@ -387,10 +393,19 @@ def test_deck_phase_auto_generates_html_on_first_render(monkeypatch):
         phases._GUIDELINE_PLACEHOLDER: "# Guideline",
         phases._STRUCTURE_BRIEFING_PLACEHOLDER: "# Struktur",
     }
-    system_prompt, messages = fake_client.calls[0]
-    assert system_prompt == "PROMPT"
-    assert messages == [
-        {"role": "user", "content": phases._HTML_GENERATION_INSTRUCTION}
+    # Two calls: preflight plan first, then code with that plan in context.
+    assert len(fake_client.calls) == 2
+    plan_system, plan_messages = fake_client.calls[0]
+    assert plan_system == "PROMPT"
+    assert plan_messages == [
+        {"role": "user", "content": phases._PREFLIGHT_INSTRUCTION}
+    ]
+    code_system, code_messages = fake_client.calls[1]
+    assert code_system == "PROMPT"
+    assert code_messages == [
+        {"role": "user", "content": phases._PREFLIGHT_INSTRUCTION},
+        {"role": "assistant", "content": "# Preflight-Plan"},
+        {"role": "user", "content": phases._CODE_INSTRUCTION},
     ]
 
 
