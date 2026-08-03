@@ -8,7 +8,9 @@ einheitlichen Markdown-Design-Guideline mit CSS-Variablen zusammen.
 - `extract_pdf_design.py` — Fonts, Schriftgrößen, Text-/Grafikfarben aus
   einem PDF (z.B. Geschäftsbericht). Benötigt `pymupdf`.
 - `extract_pptx_theme.py` — Theme-Farben, Fonts, Layouts, Platzhalter-
-  Positionen aus einem Folienmaster (.pptx/.potx). Benötigt `python-pptx`.
+  Positionen und -Typen, Textstile je Gliederungsebene und Hintergrund-
+  füllung je Layout aus einem Folienmaster (.pptx/.potx). Benötigt
+  `python-pptx`.
 - `synthesis_prompt.md` — Fertiger Prompt, um beide JSON-Outputs in einem
   Chatbot (auch ohne Tool-Zugriff) zu einer Markdown-Design-Guideline
   zusammenzuführen.
