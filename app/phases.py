@@ -28,6 +28,17 @@ _HTML_GENERATION_INSTRUCTION = (
     "keinen Preflight-Plan, keine Erklärungen."
 )
 
+_ROHINHALTE_HELP = (
+    "Je konkreter hier, desto konkreter die Folien — das Modell darf nichts "
+    "dazuerfinden.\n\n"
+    "**Gut:** Stichpunkte, Zahlen mit Einheit und Zeitraum, Zitate, Namen, "
+    "bestehende Textabschnitte. Gern roh und unsortiert.\n\n"
+    "**Wörtlich übernommen** wird, was du in Anführungszeichen setzt oder mit "
+    "`Headline:` markierst — z.B. `Headline: Umsatz wächst zweistellig`.\n\n"
+    "**Fehlt etwas**, erscheint es auf der Folie als `[FEHLT: ...]` statt als "
+    "erfundene Zahl. Das ist Absicht — dann ergänzen und neu generieren."
+)
+
 _LLM_ERROR_MESSAGES = (
     (openai.APITimeoutError, "Zeitüberschreitung beim LLM-Aufruf."),
     (openai.AuthenticationError, "Authentifizierung beim LLM-Provider fehlgeschlagen."),
@@ -174,6 +185,7 @@ def _render_setup_sidebar() -> None:
         "Rohinhalte (Stichpunkte, bestehender Text)",
         value=setup["rohinhalte"],
         key="setup_rohinhalte",
+        help=_ROHINHALTE_HELP,
     )
 
     required_filled = all(

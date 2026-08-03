@@ -49,6 +49,11 @@ Regeln:
 - Jede Folie = ein <section class="slide">-Block in der definierten
   Seitengröße
 - Konsistenz vor Kreativität: gleicher Folientyp = exakt gleiches Layout
+- Headline und Bullets aus der Folienstruktur wörtlich übernehmen. Nicht
+  umformulieren, nicht kürzen, nicht ergänzen, keine zusätzlichen Folientexte
+  erfinden.
+- `[FEHLT: ...]`-Markierungen bleiben sichtbar im Deck stehen — sie zeigen dem
+  Nutzer, wo Inhalt fehlt. Nicht durch erfundene Inhalte ersetzen.
 
 [HIER Design-Guideline aus Schritt 1 EINFÜGEN]
 
