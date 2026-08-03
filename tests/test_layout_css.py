@@ -108,6 +108,45 @@ def test_catalog_lists_layouts_and_classes(tokens):
         assert f".{name}" in css
 
 
+def test_master_css_is_stripped_and_restored_verbatim(tokens):
+    """Iterationen sehen den generierten Block nicht und veraendern ihn nicht."""
+    block = layout_css.build_css(tokens)
+    deck = (
+        f"<html><head>{block}<style>.x{{color:red}}</style></head>"
+        "<body>D</body></html>"
+    )
+
+    stripped, cut = layout_css.split_master_css(deck)
+
+    assert cut == block
+    assert layout_css.MASTER_CSS_MARKER not in stripped
+    assert layout_css.MASTER_CSS_PLACEHOLDER in stripped
+    assert ".x{color:red}" in stripped  # eigenes CSS des Modells bleibt drin
+    assert layout_css.restore_master_css(stripped, cut) == deck
+
+
+def test_master_css_returns_even_if_the_model_drops_the_placeholder(tokens):
+    block = layout_css.build_css(tokens)
+    restored = layout_css.restore_master_css("<html><head></head></html>", block)
+    assert block in restored
+
+    # Modell hat den Block selbst nachgebaut: Original gewinnt, nur einmal drin
+    rebuilt = (
+        f"<html><head><style>\n{layout_css.MASTER_CSS_MARKER}\n"
+        ".slide{}</style></head></html>"
+    )
+    restored = layout_css.restore_master_css(rebuilt, block)
+    assert block in restored
+    assert restored.count(layout_css.MASTER_CSS_MARKER) == 1
+
+
+def test_deck_without_master_css_survives_the_roundtrip():
+    deck = "<html><body>Kein Folienmaster</body></html>"
+    stripped, cut = layout_css.split_master_css(deck)
+    assert (stripped, cut) == (deck, "")
+    assert layout_css.restore_master_css(deck, cut) == deck
+
+
 def test_empty_tokens_stay_harmless():
     assert layout_css.layouts({}) == []
     assert "Keine Folienlayouts" in layout_css.catalog_markdown({})
