@@ -5,14 +5,12 @@ import os
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import OpenAI
 
-_AZURE_AD_SCOPE = "https://cognitiveservices.azure.com/.default"
-
-
 class AzureOpenAIClient:
     def __init__(self) -> None:
-        token_provider = get_bearer_token_provider(
-            DefaultAzureCredential(), _AZURE_AD_SCOPE
+        scope = os.environ.get(
+            "AZURE_AD_SCOPE", "https://cognitiveservices.azure.com/.default"
         )
+        token_provider = get_bearer_token_provider(DefaultAzureCredential(), scope)
         endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
         self._client = OpenAI(
             base_url=f"{endpoint}/openai/v1",
