@@ -533,6 +533,75 @@ def test_deck_generation_error_is_not_labelled_as_a_failed_change(monkeypatch):
     assert errors == ["Deck-Generierung fehlgeschlagen: boom"]
 
 
+def _stub_deck_generation_widgets(monkeypatch):
+    monkeypatch.setattr(phases.st, "write", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "caption", lambda *a, **k: None)
+    monkeypatch.setattr(phases.st, "spinner", lambda *a, **k: _FakeSpinner())
+    monkeypatch.setattr(phases.st, "rerun", lambda: None)
+    monkeypatch.setattr(phases.st, "error", lambda *a, **k: None)
+    monkeypatch.setattr(phases, "load_prompt", lambda path, replacements: "PROMPT")
+
+
+def test_failed_code_phase_keeps_the_plan_and_retry_skips_it(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch, phase="deck", deck_html=None, structure_md="# Struktur"
+    )
+    _stub_deck_generation_widgets(monkeypatch)
+    fake_client = _FakeClient()
+
+    def _complete(system, messages):
+        fake_client.calls.append((system, messages))
+        if len(fake_client.calls) == 1:
+            return "# Preflight-Plan"
+        if len(fake_client.calls) == 2:
+            raise RuntimeError("boom")
+        return "<html>Deck</html>"
+
+    fake_client.complete = _complete
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    phases.render_sidebar()
+
+    assert session_state["phase"] == "structure"
+    assert session_state["deck_preflight"] == "# Preflight-Plan"
+    assert session_state["preflight_version"] == session_state["structure_version"]
+
+    session_state["phase"] = "deck"
+    phases.render_sidebar()
+
+    assert session_state["deck_html"] == "<html>Deck</html>"
+    # Three calls in total: the plan is not generated a second time.
+    assert len(fake_client.calls) == 3
+    _, messages = fake_client.calls[2]
+    assert messages[1] == {"role": "assistant", "content": "# Preflight-Plan"}
+
+
+def test_changed_structure_invalidates_the_stored_plan(monkeypatch):
+    session_state = _fresh_state(
+        monkeypatch,
+        phase="deck",
+        deck_html=None,
+        structure_md="# Neue Struktur",
+        structure_version=1,
+        deck_preflight="# Alter Plan",
+        preflight_version=0,
+    )
+    _stub_deck_generation_widgets(monkeypatch)
+    fake_client = _FakeClient()
+    replies = ["# Neuer Plan", "<html>Deck</html>"]
+    fake_client.complete = lambda system, messages: (
+        fake_client.calls.append((system, messages))
+        or replies[len(fake_client.calls) - 1]
+    )
+    monkeypatch.setattr(phases, "get_client", lambda: fake_client)
+
+    phases.render_sidebar()
+
+    assert session_state["deck_preflight"] == "# Neuer Plan"
+    assert session_state["preflight_version"] == 1
+    assert len(fake_client.calls) == 2
+
+
 def _deck_generation_state(monkeypatch, deck_reply):
     """Deck phase about to auto-generate, with the model answering `deck_reply`."""
     session_state = _fresh_state(

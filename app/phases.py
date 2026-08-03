@@ -447,20 +447,13 @@ def _generate_structure_iteration(
     return get_client().complete(prompt, [{"role": "user", "content": change_request}])
 
 
-def _generate_deck_html(
-    structure_md: str, guideline_md: str | None
-) -> tuple[str, str]:
-    """Fill the HTML-deck prompt with guideline + confirmed structure and run it.
+def _deck_prompt(structure_md: str, guideline_md: str | None) -> str:
+    """The HTML-deck prompt with guideline + confirmed structure filled in.
 
-    Two calls, matching the two phases the prompt template describes: the
-    preflight plan first, then the code with that plan in context. The plan
-    is fed back as an assistant turn, so the guideline and the structure are
-    sent once per call rather than repeated inside a single prompt.
-
-    Returns `(preflight_plan, deck_html)` — the plan names the layout risks
-    the model saw, which is worth showing rather than discarding.
+    Both phases of a run share it verbatim, so the guideline and the structure
+    travel once per call instead of being repeated inside a single prompt.
     """
-    prompt = load_prompt(
+    return load_prompt(
         HTML_DECK_PROMPT,
         {
             _GUIDELINE_PLACEHOLDER: guideline_md or "",
@@ -468,18 +461,26 @@ def _generate_deck_html(
             _STRUCTURE_BRIEFING_PLACEHOLDER: structure_md,
         },
     )
-    client = get_client()
-    preflight = [{"role": "user", "content": _PREFLIGHT_INSTRUCTION}]
-    plan = client.complete(prompt, preflight)
-    deck_html = client.complete(
+
+
+def _generate_preflight(prompt: str) -> str:
+    """Phase 1 of the prompt template: the plan as Markdown, no code yet."""
+    return get_client().complete(
+        prompt, [{"role": "user", "content": _PREFLIGHT_INSTRUCTION}]
+    )
+
+
+def _generate_deck_from_plan(prompt: str, plan: str) -> str:
+    """Phase 2: the deck, with the plan handed back as an assistant turn."""
+    deck_html = get_client().complete(
         prompt,
         [
-            *preflight,
+            {"role": "user", "content": _PREFLIGHT_INSTRUCTION},
             {"role": "assistant", "content": plan},
             {"role": "user", "content": _CODE_INSTRUCTION},
         ],
     )
-    return plan, _clean_deck_html(deck_html)
+    return _clean_deck_html(deck_html)
 
 
 def _generate_deck_html_iteration(deck_html: str, change_request: str) -> str:
@@ -665,19 +666,43 @@ def _render_lint_report() -> None:
             st.rerun()
 
 
+def _reusable_preflight() -> str | None:
+    """The stored plan, as long as it still belongs to the current structure.
+
+    Every structure change bumps `structure_version` and invalidates it that
+    way. Without this, a failed phase 2 would throw away a perfectly good plan
+    and pay for both calls again on the next attempt.
+    """
+    if st.session_state["preflight_version"] != st.session_state["structure_version"]:
+        return None
+    return st.session_state["deck_preflight"]
+
+
 def _render_deck_sidebar() -> None:
     if st.session_state["deck_html"] is None:
-        with st.spinner("Deck wird generiert (erst Preflight-Plan, dann Code)..."):
+        plan = _reusable_preflight()
+        label = (
+            "Deck wird generiert (Code nach vorhandenem Preflight-Plan)..."
+            if plan
+            else "Deck wird generiert (erst Preflight-Plan, dann Code)..."
+        )
+        with st.spinner(label):
             try:
-                preflight, deck_html = _generate_deck_html(
+                prompt = _deck_prompt(
                     st.session_state["structure_md"], st.session_state["guideline_md"]
                 )
+                if plan is None:
+                    plan = _generate_preflight(prompt)
+                    st.session_state["deck_preflight"] = plan
+                    st.session_state["preflight_version"] = st.session_state[
+                        "structure_version"
+                    ]
+                deck_html = _generate_deck_from_plan(prompt, plan)
             except Exception as exc:
                 _set_error(exc, "deck_generation")
                 st.session_state["phase"] = "structure"
                 st.rerun()
             else:
-                st.session_state["deck_preflight"] = preflight
                 st.session_state["deck_html"] = deck_html
                 st.session_state["deck_pdf"] = None
                 _clear_error()
@@ -733,6 +758,7 @@ def _render_deck_sidebar() -> None:
             st.session_state["deck_html"] = None
             st.session_state["deck_pdf"] = None
             st.session_state["deck_preflight"] = None
+            st.session_state["preflight_version"] = -1
             st.session_state["deck_chat"] = []
             st.session_state["deck_history"] = []
             st.session_state["confirm_back_to_structure"] = False

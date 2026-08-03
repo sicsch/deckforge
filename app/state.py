@@ -22,6 +22,8 @@ DEFAULT_STATE = {
     "structure_chat": [],
     "deck_html": None,
     "deck_preflight": None,
+    # -1 never matches structure_version, so the first run always plans.
+    "preflight_version": -1,
     "deck_pdf": None,
     "deck_chat": [],
     "deck_history": [],
