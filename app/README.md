@@ -73,6 +73,26 @@ Umgebungsvariable `LLM_PROVIDER` in `.env` — kein Codeänderung nötig.
 
 Der aktive Provider wird in der App-Kopfzeile angezeigt.
 
+## Streaming
+
+Beide Provider streamen die Antwort (`app/llm/chat.py`) und setzen sie
+intern wieder zusammen — die App-Logik bekommt weiterhin einen fertigen
+String. Grund ist nicht die Anzeige, sondern die Laufzeit: ohne Streaming
+schickt der Endpoint bis zum Ende der Generierung kein einziges Byte. Lange
+Läufe — der Preflight-Plan und erst recht das vollständige Deck — laufen
+damit in die Antwortfrist zwischengeschalteter Gateways und kommen als
+HTTP-Fehlerseite zurück statt als Deck.
+
+- `LLM_STREAMING=0` schaltet auf den bisherigen Einzelabruf zurück. Sinnvoll
+  nur, wenn ein Gateway Server-Sent Events puffert statt durchzureichen.
+- `LLM_TIMEOUT_SECONDS` (Default 300) begrenzt den einzelnen Aufruf. Ohne
+  den Wert gilt der SDK-Default von zehn Minuten.
+
+Schlägt ein Aufruf trotzdem fehl, zeigt die App eine Zeile mit dem
+HTTP-Status statt der Fehlerseite. Ein bereits erzeugter Preflight-Plan
+bleibt erhalten: der nächste Versuch generiert nur noch den Code, solange
+die Struktur unverändert ist.
+
 ## Bekannte Einschränkungen (MVP)
 
 - **Keine Persistenz.** Alles liegt in `st.session_state`. Nach Prozessende
