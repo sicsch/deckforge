@@ -16,11 +16,13 @@ SLIDE_ARCHITECT_PROMPT = "02-slide-structure/slide_architect_prompt.md"
 STRUCTURE_CHAT_PROMPT = "02-slide-structure/structure_chat_prompt.md"
 HTML_DECK_PROMPT = "03-html-generation/html_deck_prompt.md"
 HTML_DECK_CHAT_PROMPT = "03-html-generation/html_deck_chat_prompt.md"
+CSS_ITERATION_PROMPT = "03-html-generation/css_iteration_prompt.md"
 _GUIDELINE_PLACEHOLDER = "[HIER Design-Guideline aus Schritt 1 EINFÜGEN]"
 _BRIEFING_PLACEHOLDER = "[HIER Thema/Zielgruppe/Ziel/Wirkung/Inhalte EINFÜGEN]"
 _STRUCTURE_PLACEHOLDER = "[HIER Aktuelle Folienstruktur EINFÜGEN]"
 _CHANGE_REQUEST_PLACEHOLDER = "[HIER Änderungswunsch EINFÜGEN]"
 _DECK_HTML_PLACEHOLDER = "[HIER Aktuelles HTML-Deck EINFÜGEN]"
+_DECK_CSS_PLACEHOLDER = "[HIER Aktuelles Deck-CSS EINFÜGEN]"
 _STRUCTURE_BRIEFING_PLACEHOLDER = (
     "[HIER Folienstruktur + HTML-Briefing aus Schritt 2 EINFÜGEN]"
 )
@@ -397,6 +399,29 @@ def _generate_deck_html_iteration(deck_html: str, change_request: str) -> str:
     return layout_css.restore_master_css(updated, master_css)
 
 
+def _generate_deck_css_iteration(deck_html: str, change_request: str) -> str:
+    """Style-only iteration: only the deck's own CSS block travels to the model.
+
+    The markup never leaves the app, so it stays byte-identical and the round
+    costs a few KB instead of the whole deck (#84). A deck without its own
+    `<style>` block has nothing to iterate on — then the full path runs.
+    """
+    css = layout_css.deck_css(deck_html)
+    if not css.strip():
+        return _generate_deck_html_iteration(deck_html, change_request)
+    prompt = load_prompt(
+        CSS_ITERATION_PROMPT,
+        {
+            _DECK_CSS_PLACEHOLDER: css,
+            _CHANGE_REQUEST_PLACEHOLDER: change_request,
+        },
+    )
+    updated = get_client().complete(
+        prompt, [{"role": "user", "content": change_request}]
+    )
+    return layout_css.replace_deck_css(deck_html, layout_css.clean_css(updated))
+
+
 def _render_structure_sidebar() -> None:
     for message in st.session_state["structure_chat"]:
         with st.chat_message(message["role"]):
@@ -483,14 +508,22 @@ def _render_pdf_export() -> None:
         )
 
 
-def _apply_deck_change(change_request: str) -> None:
-    """Run one deck iteration and record it in chat + version history."""
+def _apply_deck_change(change_request: str, css_only: bool = False) -> None:
+    """Run one deck iteration and record it in chat + version history.
+
+    `css_only` takes the cheap path from #84 — only the CSS block goes out and
+    comes back. Everything else keeps the full path, where the model sees the
+    markup it is supposed to change.
+    """
     st.session_state["deck_chat"].append({"role": "user", "content": change_request})
     with st.spinner("Deck wird aktualisiert..."):
         try:
-            deck_html = _generate_deck_html_iteration(
-                st.session_state["deck_html"], change_request
+            iterate = (
+                _generate_deck_css_iteration
+                if css_only
+                else _generate_deck_html_iteration
             )
+            deck_html = iterate(st.session_state["deck_html"], change_request)
         except Exception as exc:
             st.session_state["error"] = _describe_llm_error(exc)
         else:
@@ -547,9 +580,15 @@ def _render_deck_sidebar() -> None:
         with st.chat_message(message["role"]):
             st.write(message["content"])
 
+    css_only = st.checkbox(
+        "Nur Styles ändern",
+        help="Schickt nur den CSS-Block an das Modell — schneller, und das "
+        "Folien-Markup bleibt unverändert. Für Änderungen an Inhalten, "
+        "Folienreihenfolge oder Layout ausschalten.",
+    )
     change_request = st.chat_input("Änderungswunsch zum Deck")
     if change_request:
-        _apply_deck_change(change_request)
+        _apply_deck_change(change_request, css_only=css_only)
         st.rerun()
 
     if st.session_state["error"]:

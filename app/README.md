@@ -48,6 +48,17 @@ Bei Deck-Iterationen wird der Block gar nicht erst mitgeschickt:
 setzt ihn danach an derselben Stelle wieder ein. Das spart Kontext pro Runde
 und macht Drift am Layout-CSS über mehrere Runden unmöglich.
 
+## Stil-Iteration ohne Deck
+
+Reine Stiländerungen (Farben, Abstände, Schriftgrößen) brauchen das Markup
+nicht. Ist im Deck-Chat **Nur Styles ändern** angehakt, geht allein der
+eigene `<style>`-Block des Decks an das Modell (`css_iteration_prompt.md`);
+`deck_css()` holt ihn heraus, `replace_deck_css()` setzt das Ergebnis zurück.
+Das Folien-Markup bleibt dabei byte-identisch und pro Runde wandern wenige KB
+statt des kompletten Decks durch den Kontext. Alles andere — Inhalte,
+Folienreihenfolge, Layoutwahl — läuft weiter über den vollen Weg mit
+`html_deck_chat_prompt.md`.
+
 ## Provider-Wechsel
 
 Der LLM-Zugriff läuft über eine schmale Provider-Abstraktion

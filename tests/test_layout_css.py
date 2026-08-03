@@ -147,6 +147,34 @@ def test_deck_without_master_css_survives_the_roundtrip():
     assert layout_css.restore_master_css(deck, cut) == deck
 
 
+def test_deck_css_is_the_only_part_a_style_iteration_touches(tokens):
+    """Issue #84: nur der eigene <style>-Block geht raus und kommt zurueck."""
+    block = layout_css.build_css(tokens)
+    deck = (
+        f"<html><head>{block}<style>.x{{color:red}}</style></head>"
+        "<body><section class='slide'>D</section></body></html>"
+    )
+
+    assert layout_css.deck_css(deck) == ".x{color:red}"
+
+    updated = layout_css.replace_deck_css(deck, ".x{color:blue}")
+
+    assert updated == deck.replace(".x{color:red}", ".x{color:blue}")
+    assert block in updated  # Folienmaster-Block bleibt unangetastet
+
+
+def test_deck_without_own_css_has_nothing_to_iterate(tokens):
+    deck = f"<html><head>{layout_css.build_css(tokens)}</head><body>D</body></html>"
+    assert layout_css.deck_css(deck) == ""
+    assert layout_css.replace_deck_css(deck, ".x{}") == deck
+
+
+def test_clean_css_strips_fences_and_style_tags():
+    assert layout_css.clean_css("```css\n.x{color:red}\n```") == ".x{color:red}"
+    assert layout_css.clean_css("<style>.x{color:red}</style>") == ".x{color:red}"
+    assert layout_css.clean_css("") == ""
+
+
 def test_empty_tokens_stay_harmless():
     assert layout_css.layouts({}) == []
     assert "Keine Folienlayouts" in layout_css.catalog_markdown({})

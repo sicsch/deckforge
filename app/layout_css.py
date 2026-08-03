@@ -96,6 +96,15 @@ _MASTER_CSS_RE = re.compile(
     r"<style>\s*/\* Automatisch aus dem Folienmaster erzeugt.*?</style>", re.DOTALL
 )
 
+# The deck's own <style> block — every style block that is not the generated
+# one. A style-only iteration touches nothing but its contents (Issue #84).
+_DECK_CSS_RE = re.compile(
+    r"(<style[^>]*>)(?!\s*/\* Automatisch aus dem Folienmaster)(.*?)(</style>)",
+    re.DOTALL,
+)
+
+_STYLE_TAG_RE = re.compile(r"</?style[^>]*>")
+
 COMPONENT_CLASSES = (
     "cards",
     "card",
@@ -382,6 +391,35 @@ def restore_master_css(deck_html: str, block: str) -> str:
     if "</head>" in deck_html:
         return deck_html.replace("</head>", f"{block}\n</head>", 1)
     return f"{block}\n{deck_html}"
+
+
+def deck_css(deck_html: str) -> str:
+    """The deck's own CSS — the `<style>` block that isn't the generated one.
+
+    Empty when the deck has no CSS of its own; a style-only iteration then has
+    nothing to work on and has to take the full path.
+    """
+    match = _DECK_CSS_RE.search(deck_html or "")
+    return match.group(2) if match else ""
+
+
+def replace_deck_css(deck_html: str, css: str) -> str:
+    """Swap the deck's own CSS, leaving every byte of the markup untouched."""
+    return _DECK_CSS_RE.sub(
+        lambda m: f"{m.group(1)}{css}{m.group(3)}", deck_html, count=1
+    )
+
+
+def clean_css(answer: str) -> str:
+    """Strip markdown fences and stray `<style>` tags off a model's CSS answer.
+
+    The prompt asks for bare CSS; models still wrap it now and then, and a
+    fence inside a `<style>` block breaks the whole deck.
+    """
+    text = (answer or "").strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
+    return _STYLE_TAG_RE.sub("", text).strip()
 
 
 def catalog_markdown(tokens: dict, selected: list[str] | None = None) -> str:
